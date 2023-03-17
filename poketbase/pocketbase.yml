@@ -7,7 +7,7 @@ services:
         source: 'data'
         target: '/pb_data'
     ports:
-      - 8696:8096
+      - 8090:8090
     restart: unless-stopped
 volumes: 
   data:
