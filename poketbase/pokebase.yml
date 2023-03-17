@@ -1,0 +1,13 @@
+version: '3.7'
+services:
+  poketbase: 
+    image: poketbase
+    volumes:
+      - type: volume
+        source: 'data'
+        target: '/pb_data'
+    ports:
+      - 8096:8096
+    restart: unless-stopped
+volumes: 
+  data:
