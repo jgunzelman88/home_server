@@ -20,4 +20,4 @@ VOLUME [ "/pb_data" ]
 EXPOSE 8090
 
 # Start Pocketbase
-ENTRYPOINT [ "/usr/local/bin/pocketbase", "serve" ]
+ENTRYPOINT [ "/usr/local/bin/pocketbase", "serve", "--http=0.0.0.0:8090", "--dir=/pb_data", ]
