@@ -1,0 +1,24 @@
+version: '3.7'
+services:
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    environment:
+      PUID : 1000
+      PGID : 1000
+      TZ : 'America/New_York'
+      JELLYFIN_PublishedServerUrl : '192.168.1.8'
+    volumes:
+      - type: volume
+        source: 'config'
+        target: '/config'
+      - type: bind
+        source: '/mnt/22de43ac-60fc-418a-bd8a-172d3ab8f96c/tv'
+        target: '/data/tvshows'
+      - type: bind
+        source: '/mnt/d311e5a8-0002-42dc-89e1-85921aaafbc9/movies'
+        target: '/data/movies'
+    ports:
+      - 8096:8096
+    restart: unless-stopped
+volumes: 
+  config:
