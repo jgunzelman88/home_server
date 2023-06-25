@@ -9,9 +9,11 @@ services:
       - POSTGRESQL_DATABASE=bitnami_keycloak
     volumes:
       - 'postgresql_data:/bitnami/postgresql'
-
   keycloak:
     image: docker.io/bitnami/keycloak:21
+    environment:
+      - KEYCLOAK_ADMIN=bwing
+      - KEYCLOAK_ADMIN_PASSWORD=replaceme12345
     depends_on:
       - postgresql
     ports:
