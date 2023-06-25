@@ -1,0 +1,1 @@
+sudo docker stack deploy -c ./keycloak.yml keycloak
