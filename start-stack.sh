@@ -8,7 +8,7 @@ while "$STATUS"
 do 
     status_output="$(sudo docker stack ps -f desired-state=running $SERVICE)"
     if ["$status_output" != "nothing found in stack: $SERVICE"]; then
-        STATUS=false
-        sleep 3600
+        STATUS=false 
     fi
+    sleep 3600
 done
