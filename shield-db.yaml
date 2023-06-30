@@ -1,0 +1,12 @@
+version: '3.7'
+services:
+  pocketbase:
+    image: shield-pb:latest
+    volumes:
+      - pocketbase-data:/pb/data
+    networks:
+      - internal
+volumes:
+  pocketbase-data:
+networks:
+  internal:
