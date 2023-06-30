@@ -1,3 +1,4 @@
+#!/bin/bash
 STATUS=true
 SERVICE="$1"
 CONFIG="$2"
