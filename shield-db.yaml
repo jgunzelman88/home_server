@@ -6,6 +6,8 @@ services:
       - pocketbase-data:/pb/data
     networks:
       - internal
+    ports:
+      - "8090:8090"
 volumes:
   pocketbase-data:
 networks:
