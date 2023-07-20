@@ -11,7 +11,7 @@ services:
       - ./letsencrypt:/etc/letsencrypt
     networks:
       - internal
-  networks:
-    internal:
-      driver: overlay
-      attachable: true
+networks:
+  internal:
+    driver: overlay
+    attachable: true
