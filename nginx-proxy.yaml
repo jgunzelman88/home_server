@@ -10,4 +10,4 @@ services:
       - ./data:/data
       - ./letsencrypt:/etc/letsencrypt
     networks:
-     
+      - internal
