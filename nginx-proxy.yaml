@@ -1,6 +1,6 @@
 version: '3.8'
 services:
-  app:
+  nginx:
     image: 'jc21/nginx-proxy-manager:latest'
     ports:
       - '80:80'
@@ -11,3 +11,7 @@ services:
       - ./letsencrypt:/etc/letsencrypt
     networks:
       - internal
+  networks:
+    internal:
+      driver: overlay
+      attachable: true
