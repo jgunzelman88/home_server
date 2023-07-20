@@ -6,7 +6,7 @@ services:
       PUID : 1000
       PGID : 1000
       TZ : 'America/New_York'
-      JELLYFIN_PublishedServerUrl : '192.168.1.8'
+      JELLYFIN_PublishedServerUrl : 'bwing.local'
     volumes:
       - type: volume
         source: 'config'
@@ -20,5 +20,7 @@ services:
     ports:
       - 8096:8096
     restart: unless-stopped
+    networks:
+      - internal
 volumes: 
   config:
