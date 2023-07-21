@@ -26,5 +26,6 @@ volumes:
   config:
 networks:
   default:
+    driver: overlay
     name: internal
     external: true
