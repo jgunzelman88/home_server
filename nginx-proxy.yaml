@@ -15,6 +15,6 @@ volumes:
   data:
   letsencrypt:
 networks:
-  public:
-    external:
-      name: internal
+  default:
+    name: internal
+    external: true

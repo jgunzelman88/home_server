@@ -25,6 +25,6 @@ services:
 volumes: 
   config:
 networks:
-  public:
-    external:
-      name: internal
+  default:
+    name: internal
+    external: true
