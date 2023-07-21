@@ -9,6 +9,12 @@ services:
     volumes:
       - data:/data
       - letsencrypt:/etc/letsencrypt
+    networks:
+      - internal
 volumes:
   data:
   letsencrypt:
+networks:
+  public:
+    external:
+      name: internal

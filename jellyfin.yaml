@@ -24,3 +24,7 @@ services:
       - internal
 volumes: 
   config:
+networks:
+  public:
+    external:
+      name: internal
