@@ -81,4 +81,4 @@ services:
         source: '/home/bwing/volumes/nginx_letsencrypt/_data'
         target: '/etc/letsencrypt'
 networks:
-  internal
+  internal:
