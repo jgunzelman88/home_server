@@ -28,7 +28,7 @@ services:
   # ---------------------------------------------------------------
   # Keycloak
   # ---------------------------------------------------------------
-  kc-postgresql:
+  postgresql:
     image: docker.io/bitnami/postgresql:11
     environment:
       # ALLOW_EMPTY_PASSWORD is recommended only for development.
