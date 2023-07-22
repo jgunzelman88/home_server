@@ -1,33 +1,33 @@
-version: '3.7'
+version: "3.7"
 services:
-  # --------------------------------------------------------------- 
-  # Jellyfin 
-  # --------------------------------------------------------------- 
+  # ---------------------------------------------------------------
+  # Jellyfin
+  # ---------------------------------------------------------------
   jellyfin:
     image: lscr.io/linuxserver/jellyfin:latest
     environment:
-      PUID : 1000
-      PGID : 1000
-      TZ : 'America/New_York'
-      JELLYFIN_PublishedServerUrl : 'bwing.local'
+      PUID: 1000
+      PGID: 1000
+      TZ: "America/New_York"
+      JELLYFIN_PublishedServerUrl: "bwing.local"
     volumes:
       - type: bind
-        source: '/home/bwing/volumes/jellyfin_config/_data'
-        target: '/config'
+        source: "/home/bwing/volumes/jellyfin_config/_data"
+        target: "/config"
       - type: bind
-        source: '/mnt/media2/tv'
-        target: '/data/tvshows'
+        source: "/mnt/media2/tv"
+        target: "/data/tvshows"
       - type: bind
-        source: '/mnt/media1/movies'
-        target: '/data/movies'
+        source: "/mnt/media1/movies"
+        target: "/data/movies"
     ports:
       - 8096:8096
     restart: unless-stopped
     networks:
       - internal
-  # --------------------------------------------------------------- 
+  # ---------------------------------------------------------------
   # Keycloak
-  # --------------------------------------------------------------- 
+  # ---------------------------------------------------------------
   kc-postgresql:
     image: docker.io/bitnami/postgresql:11
     environment:
@@ -37,8 +37,8 @@ services:
       - POSTGRESQL_DATABASE=bitnami_keycloak
     volumes:
       - type: bind
-        source: '/home/bwing/volumes/keycloak_postgresql_data/_data'
-        target: '/bitnami/postgresql'
+        source: "/home/bwing/volumes/keycloak_postgresql_data/_data"
+        target: "/bitnami/postgresql"
   keycloak:
     image: docker.io/bitnami/keycloak:21
     environment:
@@ -51,22 +51,22 @@ services:
     restart: unless-stopped
     networks:
       - internal
-  # --------------------------------------------------------------- 
+  # ---------------------------------------------------------------
   # Shield-DB
-  # --------------------------------------------------------------- 
+  # ---------------------------------------------------------------
   pocketbase:
     image: shield-pb:latest
     volumes:
       - type: bind
-        source: '/home/bwing/volumes/shield-db_pocketbase-data/_data'
-        target: '/pb/data'
+        source: "/home/bwing/volumes/shield-db_pocketbase-data/_data"
+        target: "/pb/data"
     networks:
       - internal
     ports:
       - "8090:8090"
-  # --------------------------------------------------------------- 
+  # ---------------------------------------------------------------
   # Nginx
-  # --------------------------------------------------------------- 
+  # ---------------------------------------------------------------
   app:
     image: "jc21/nginx-proxy-manager:latest"
     ports:
@@ -75,10 +75,12 @@ services:
       - "443:443"
     volumes:
       - type: bind
-        source: '/home/bwing/volumes/nginx_data/_data'
-        target: '/data'
+        source: "/home/bwing/volumes/nginx_data/_data"
+        target: "/data"
       - type: bind
-        source: '/home/bwing/volumes/nginx_letsencrypt/_data'
-        target: '/etc/letsencrypt'
+        source: "/home/bwing/volumes/nginx_letsencrypt/_data"
+        target: "/etc/letsencrypt"
+    networks:
+      - internal
 networks:
   internal:
