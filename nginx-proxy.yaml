@@ -12,3 +12,7 @@ services:
 volumes:
   data:
   letsencrypt:
+networks:
+  default:
+    external:
+      name: bridge
