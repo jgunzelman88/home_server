@@ -1,18 +1,16 @@
-version: '3.8'
+version: "3.8"
 services:
   app:
-    image: 'jc21/nginx-proxy-manager:latest'
+    image: "jc21/nginx-proxy-manager:latest"
     ports:
-      - '80:80'
-      - '81:81'
-      - '443:443'
+      - "80:80"
+      - "81:81"
+      - "443:443"
     volumes:
       - data:/data
       - letsencrypt:/etc/letsencrypt
+    networks:
+      - bridge
 volumes:
   data:
   letsencrypt:
-networks:
-  default:
-    external:
-      name: bridge
