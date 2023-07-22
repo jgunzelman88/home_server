@@ -40,7 +40,7 @@ services:
       - type: bind
         source: '/home/bwing/volumes/unifi_run/_data'
         target: '/var/run/unifi'
-      - type: v
+      - type: bind
         source: '/home/bwing/volumes/unifi_backup'
         target: '/unifi/data/backup'
     user: unifi
