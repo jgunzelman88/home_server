@@ -63,3 +63,5 @@ services:
       - type: bind
         source: '/home/bwing/volumes/unifi_log/_data'
         target: '/unifi/log'
+networks:
+  unifi:
