@@ -7,10 +7,10 @@ services:
       - unifi
     restart: always
     volumes:
-      - type: volume
+      - type: bind
         source: '/home/bwing/volumes/unifi_db/_data'
         target: '/data/db'
-      - type: volume
+      - type: bind
         source: '/home/bwing/volumes/unifi_dbcfg/_data'
         target: '/data/configdb'
   controller:
@@ -22,25 +22,25 @@ services:
       - unifi
     restart: always
     volumes:
-      - type: volume
+      - type: bind
         source: '/home/bwing/volumes/unifi_dir/_data'
         target: '/unifi'
-      - type: volume
+      - type: bind
         source: '/home/bwing/volumes/unifi_data/_data'
         target: '/unifi/data'
-      - type: volume
+      - type: bind
         source: '/home/bwing/volumes/unifi_log/_data'
         target: '/unifi/log'
-      - type: volume
+      - type: bind
         source: '/home/bwing/volumes/unifi_cert/_data'
         target: '/unifi/cert'
-      - type: volume
+      - type: bind
         source: '/home/bwing/volumes/unifi_init/_data'
         target: '/unifi/init.d'
-      - type: volume
+      - type: bind
         source: '/home/bwing/volumes/unifi_run/_data'
         target: '/var/run/unifi'
-      - type: volume
+      - type: v
         source: '/home/bwing/volumes/unifi_backup'
         target: '/unifi/data/backup'
     user: unifi
@@ -66,6 +66,6 @@ services:
     command: bash -c 'tail -F /unifi/log/*.log'
     restart: always
     volumes:
-      - type: volume
+      - type: bind
         source: '/home/bwing/volumes/unifi_log/_data'
         target: '/unifi/log'
