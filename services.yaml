@@ -1,0 +1,84 @@
+version: '3.7'
+services:
+  # --------------------------------------------------------------- 
+  # Jellyfin 
+  # --------------------------------------------------------------- 
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    environment:
+      PUID : 1000
+      PGID : 1000
+      TZ : 'America/New_York'
+      JELLYFIN_PublishedServerUrl : 'bwing.local'
+    volumes:
+      - type: bind
+        source: '/home/bwing/volumes/jellyfin_config/_data'
+        target: '/config'
+      - type: bind
+        source: '/mnt/22de43ac-60fc-418a-bd8a-172d3ab8f96c/tv'
+        target: '/data/tvshows'
+      - type: bind
+        source: '/mnt/d311e5a8-0002-42dc-89e1-85921aaafbc9/movies'
+        target: '/data/movies'
+    ports:
+      - 8096:8096
+    restart: unless-stopped
+    networks:
+      - internal
+  # --------------------------------------------------------------- 
+  # Keycloak
+  # --------------------------------------------------------------- 
+  kc-postgresql:
+    image: docker.io/bitnami/postgresql:11
+    environment:
+      # ALLOW_EMPTY_PASSWORD is recommended only for development.
+      - ALLOW_EMPTY_PASSWORD=yes
+      - POSTGRESQL_USERNAME=bn_keycloak
+      - POSTGRESQL_DATABASE=bitnami_keycloak
+    volumes:
+      - type: bind
+        source: '/home/bwing/volumes/keycloak_postgresql_data/_data'
+        target: '/bitnami/postgresql'
+  keycloak:
+    image: docker.io/bitnami/keycloak:21
+    environment:
+      - KEYCLOAK_ADMIN=bwing
+      - KEYCLOAK_ADMIN_PASSWORD=replaceme12345
+    depends_on:
+      - postgresql
+    ports:
+      - "8686:8080"
+    restart: unless-stopped
+    networks:
+      - internal
+  # --------------------------------------------------------------- 
+  # Shield-DB
+  # --------------------------------------------------------------- 
+  pocketbase:
+    image: shield-pb:latest
+    volumes:
+      - type: bind
+        source: '/home/bwing/volumes/shield-db_pocketbase-data/_data'
+        target: '/pb/data'
+    networks:
+      - internal
+    ports:
+      - "8090:8090"
+  # --------------------------------------------------------------- 
+  # Nginx
+  # --------------------------------------------------------------- 
+  app:
+    image: "jc21/nginx-proxy-manager:latest"
+    ports:
+      - "80:80"
+      - "81:81"
+      - "443:443"
+    volumes:
+      - type: bind
+        source: '/home/bwing/volumes/nginx_data/_data'
+        target: '/data'
+      - type: bind
+        source: '/home/bwing/volumes/nginx_letsencrypt/_data'
+        target: '/etc/letsencrypt'
+networks:
+  internal
