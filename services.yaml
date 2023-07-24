@@ -57,8 +57,8 @@ services:
   pocketbase:
     image: shield-pb:latest
     volumes:
-      - type: bind
-        source: "/home/bwing/volumes/shield-db_pocketbase-data/_data"
+      - type: volume
+        source: "shield-db"
         target: "/pb/data"
     networks:
       - internal
@@ -84,3 +84,5 @@ services:
       - internal
 networks:
   internal:
+volumes:
+  shield-db:
