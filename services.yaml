@@ -70,7 +70,7 @@ services:
   nginx-ui:
     container_name: nginx-ui
     build: .
-    image: nginx-ui:latest
+    image: uozi/nginx-ui:latest
     ports:
       - 81:8080
     volumes:
