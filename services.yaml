@@ -67,23 +67,14 @@ services:
   # ---------------------------------------------------------------
   # Nginx
   # ---------------------------------------------------------------
-  nginx-ui:
-    container_name: nginx-ui
-    build: .
-    image: uozi/nginx-ui:latest
+  nginx:
+    container_name: nginx
+    image: nginx:1.18.0-alpine
     ports:
-      - 81:9000
       - 80:80
+      - 443:443
     volumes:
-      - /home/bwing/volumes/nginx/_data:/etc/nginx
-  #nginx:
-  #  container_name: nginx
-  #  image: nginx:1.18.0-alpine
-  #  ports:
-  #    - 80:80
-   #   - 443:443
-  #  volumes:
-  #    - /home/bwing/volumes/nginx_ui/_data:/etc/nginx
+      - /home/bwing/volumes/nginx_ui/_data:/etc/nginx
 networks:
   internal:
 volumes:
