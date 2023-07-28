@@ -67,22 +67,23 @@ services:
   # ---------------------------------------------------------------
   # Nginx
   # ---------------------------------------------------------------
-  app:
-    image: "jc21/nginx-proxy-manager:latest"
+  nginx-ui:
+    container_name: nginx-ui
+    build: .
+    image: nginx-ui:latest
     ports:
-      - "80:80"
-      - "81:81"
-      - "443:443"
+      - 81:8080
     volumes:
-      - type: bind
-        source: "/home/bwing/volumes/nginx_data/_data"
-        target: "/data"
-      - type: bind
-        source: "/home/bwing/volumes/nginx_letsencrypt/_data"
-        target: "/etc/letsencrypt"
-    networks:
-      - internal
+      - nginx:/etc/nginx
+  nginx:
+    container_name: nginx
+    image: nginx:1.18.0-alpine
+    ports:
+      - 80:80
+    volumes:
+      - nginx:/etc/nginx
 networks:
   internal:
 volumes:
   shield-db:
+  nginx:
