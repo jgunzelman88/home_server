@@ -68,16 +68,14 @@ services:
   # Nginx
   # ---------------------------------------------------------------
   nginx-ui:
-    image: uozi/nginx-ui
+    image: nginx
     ports:
       - 443:443
       - 80:80
     volumes:
-      - nginx:/etc/nginx
-      - nginx:/etc/nginx-ui
+      - /home/bwing/volumes/nginx/_data:/etc/nginx
+      - /home/bwing/volumes/nginx_ui/_data:/etc/nginx-ui
 networks:
   internal:
 volumes:
   shield-db:
-  nginx:
-  nginx-ui:
