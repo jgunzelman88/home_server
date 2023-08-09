@@ -39,6 +39,8 @@ services:
       - type: bind
         source: "/home/bwing/volumes/keycloak_postgresql_data/_data"
         target: "/bitnami/postgresql"
+    networks:
+      - internal
   keycloak:
     image: docker.io/bitnami/keycloak:21
     environment:
