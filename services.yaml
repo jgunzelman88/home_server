@@ -50,7 +50,6 @@ services:
       - postgresql
     ports:
       - "8686:8080"
-    restart: unless-stopped
     networks:
       - internal
   # ---------------------------------------------------------------
@@ -77,6 +76,18 @@ services:
       - 443:443
     volumes:
       - /home/bwing/volumes/nginx_ui/_data:/etc/nginx
+  # ---------------------------------------------------------------
+  # Ollama
+  # ---------------------------------------------------------------
+  ollama:
+    container_name: ollama
+    image: ollama/ollama
+    ports: 
+      - 11434:11434
+    volumes:
+      - type: volume
+        source: "ollama"
+        target: "/root/.ollama"
 networks:
   internal:
 volumes:
