@@ -92,3 +92,4 @@ networks:
   internal:
 volumes:
   shield-db:
+  ollama:
