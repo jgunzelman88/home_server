@@ -23,7 +23,7 @@ create_keycloak_secrets_random() {
       --from-literal=user-password="$user_pass" \
       --from-literal=replication-password="$repl_pass" \
       --from-literal=metrics-password="$metric_pass" \
-      --dry-run=client -o yaml > keycloak-secrets.yaml
+      --dry-run=client -o yaml > ./secrets/keycloak-secrets.yaml
 }
 
 create_namespace() {
