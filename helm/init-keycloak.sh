@@ -36,5 +36,5 @@ create_namespace() {
     fi
 }
 
-create_namespace();
-create_keycloak_secrets_random();
+create_namespace
+create_keycloak_secrets_random
