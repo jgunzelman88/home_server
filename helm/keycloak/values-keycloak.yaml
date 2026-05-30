@@ -1,0 +1,56 @@
+## Keycloak Authentication
+auth:
+  adminUser: admin
+  # Reference the secret created above for the admin password
+  existingSecret: "keycloak-secrets"
+  passwordSecretKey: "admin-password"
+
+postgresql:
+  enabled: true
+  auth:
+    # Use the secret we created above
+    existingSecret: "postgres-custom-secrets"
+    # The key inside the secret containing the postgres password
+    secretKeys:
+      adminPasswordKey: "postgres-password"
+      replicationPasswordKey: "replication-password"
+  
+  architecture: standalone # or 'replication' for HA
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 4Gi
+      storageClass: "standard" # Ensure this matches your cloud provider
+    
+    # Custom resources for the DB pod
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+
+externalDatabase:
+  enabled: false
+
+## Custom Environment Variables
+# Use this if you have extra secrets (like SMTP or OIDC providers)
+extraEnvVars:
+  - name: KC_HOSTNAME
+    value: "auth.example.com"
+  - name: SOME_CUSTOM_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: keycloak-secrets
+        key: admin-password
+
+## Ingress Settings
+ingress:
+  enabled: true
+  hostname: auth.example.com
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+  tls: true
