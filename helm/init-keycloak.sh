@@ -2,6 +2,9 @@
 
 namespace="keycloak"
 
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+
 create_namespace() {
     if ! kubectl get namespace "$namespace" >/dev/null 2>&1; then
         echo "Namespace '$namespace' not found. Creating..."
@@ -53,9 +56,6 @@ create_keycloak_secrets_random() {
 
 create_namespace
 create_keycloak_secrets_random || exit 1
-
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
 
 helm install keycloak bitnami/keycloak \
   -f ./keycloak/values.yaml \
