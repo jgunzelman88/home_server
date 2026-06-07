@@ -12,7 +12,7 @@ postgresql:
     existingSecret: "postgres-custom-secrets"
     # The key inside the secret containing the postgres password
     secretKeys:
-      adminPasswordKey: "postgres-password"
+      adminPasswordKey: "password"
       replicationPasswordKey: "replication-password"
   
   architecture: standalone # or 'replication' for HA
@@ -43,7 +43,7 @@ extraEnvVars:
     valueFrom:
       secretKeyRef:
         name: postgres-custom-secrets
-        key: postgres-password
+        key: password
   - name: KC_BOOTSTRAP_ADMIN_PASSWORD
     valueFrom:
       secretKeyRef:
