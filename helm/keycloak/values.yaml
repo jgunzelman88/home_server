@@ -38,7 +38,7 @@ externalDatabase:
 ## Custom Environment Variables
 extraEnvVars:
   - name: KC_HOSTNAME
-    value: "auth.example.com"
+    value: "auth.bwing"
   - name: KC_DB_PASSWORD
     valueFrom:
       secretKeyRef:
@@ -53,7 +53,7 @@ extraEnvVars:
 ## Ingress Settings
 ingress:
   enabled: true
-  hostname: auth.example.com
+  hostname: auth.bwing
   annotations:
     kubernetes.io/ingress.class: traefik
     nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
