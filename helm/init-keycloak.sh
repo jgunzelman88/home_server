@@ -57,6 +57,6 @@ create_keycloak_secrets_random() {
 create_namespace
 create_keycloak_secrets_random || exit 1
 
-helm install keycloak bitnami/keycloak \
+helm install keycloak oci://registry-1.docker.io/bitnamicharts/keycloak \
   -f ./keycloak/values.yaml \
-  --namespace "$namespace"
+  --namespace keycloak
