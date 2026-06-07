@@ -60,6 +60,69 @@ delete_namespace() {
     fi
 }
 
+delete_keycloak_middleware() {
+    echo "--- Deleting Keycloak Traefik Middleware ---"
+
+    if kubectl get middleware keycloak-headers -n "$namespace" >/dev/null 2>&1; then
+        kubectl delete middleware keycloak-headers -n "$namespace"
+        echo "Keycloak middleware deleted."
+    else
+        echo "Keycloak middleware not found. Skipping."
+    fi
+}
+
+delete_cluster_issuer() {
+    echo "--- Deleting ClusterIssuer ---"
+
+    if kubectl get clusterissuer letsencrypt-prod >/dev/null 2>&1; then
+        read -rp "Delete ClusterIssuer 'letsencrypt-prod'? (skip if used by other apps) [y/N]: " confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            kubectl delete clusterissuer letsencrypt-prod
+            echo "ClusterIssuer deleted."
+        else
+            echo "Skipping ClusterIssuer deletion."
+        fi
+    else
+        echo "ClusterIssuer 'letsencrypt-prod' not found. Skipping."
+    fi
+}
+
+delete_cert_manager() {
+    echo "--- Removing cert-manager ---"
+
+    if kubectl get namespace cert-manager >/dev/null 2>&1; then
+        read -rp "Delete cert-manager? (skip if used by other apps) [y/N]: " confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            kubectl delete -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+            echo "cert-manager removed."
+        else
+            echo "Skipping cert-manager deletion."
+        fi
+    else
+        echo "cert-manager not found. Skipping."
+    fi
+}
+
+delete_traefik_config() {
+    echo "--- Removing Traefik config ---"
+
+    local traefik_config="/var/lib/rancher/k3s/server/manifests/traefik-config.yaml"
+
+    if [ -f "$traefik_config" ]; then
+        read -rp "Delete Traefik config at $traefik_config? This reverts HTTPS redirect. [y/N]: " confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            rm -f "$traefik_config"
+            echo "Traefik config deleted. Restarting Traefik..."
+            kubectl rollout restart deployment/traefik -n kube-system
+            kubectl rollout status deployment/traefik -n kube-system --timeout=60s
+        else
+            echo "Skipping Traefik config deletion."
+        fi
+    else
+        echo "Traefik config not found. Skipping."
+    fi
+}
+
 delete_local_secrets() {
     echo "--- Deleting local secret files ---"
 
@@ -86,9 +149,13 @@ if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
 fi
 
 uninstall_helm_release
+delete_keycloak_middleware
 delete_secrets
 delete_pvcs
 delete_namespace
+delete_cluster_issuer
+delete_cert_manager
+delete_traefik_config
 delete_local_secrets
 
 echo ""
