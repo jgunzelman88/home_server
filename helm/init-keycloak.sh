@@ -5,6 +5,95 @@ namespace="keycloak"
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 
+configure_traefik() {
+    echo "--- Configuring Traefik for HTTPS ---"
+
+    cat > /var/lib/rancher/k3s/server/manifests/traefik-config.yaml <<EOF
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    ports:
+      web:
+        redirectTo:
+          port: websecure
+      websecure:
+        tls:
+          enabled: true
+    ingressRoute:
+      dashboard:
+        enabled: false
+EOF
+
+    echo "Traefik config applied. Waiting for rollout..."
+    kubectl rollout restart deployment/traefik -n kube-system
+    kubectl rollout status deployment/traefik -n kube-system --timeout=60s
+}
+
+install_cert_manager() {
+    echo "--- Installing cert-manager ---"
+
+    if kubectl get namespace cert-manager >/dev/null 2>&1; then
+        echo "cert-manager namespace already exists, skipping install."
+        return 0
+    fi
+
+    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+
+    echo "Waiting for cert-manager to be ready..."
+    kubectl rollout status deployment/cert-manager -n cert-manager --timeout=120s
+    kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=120s
+}
+
+create_cluster_issuer() {
+    echo "--- Creating ClusterIssuer ---"
+
+    if [ -z "$CERT_MANAGER_EMAIL" ]; then
+        read -rp "Enter your email for Let's Encrypt certificates: " CERT_MANAGER_EMAIL
+    fi
+
+    cat <<EOF | kubectl apply -f -
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ${CERT_MANAGER_EMAIL}
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            class: traefik
+EOF
+
+    echo "ClusterIssuer created."
+}
+
+create_keycloak_middleware() {
+    echo "--- Creating Keycloak Traefik Middleware ---"
+
+    cat <<EOF | kubectl apply -f -
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: keycloak-headers
+  namespace: ${namespace}
+spec:
+  headers:
+    customRequestHeaders:
+      X-Forwarded-Proto: "https"
+    sslRedirect: true
+EOF
+
+    echo "Keycloak middleware created."
+}
+
 create_namespace() {
     if ! kubectl get namespace "$namespace" >/dev/null 2>&1; then
         echo "Namespace '$namespace' not found. Creating..."
@@ -54,8 +143,14 @@ create_keycloak_secrets_random() {
     echo "Secrets created successfully."
 }
 
+# --- Run ---
+configure_traefik
+install_cert_manager
+create_cluster_issuer
+
 create_namespace
 create_keycloak_secrets_random || exit 1
+create_keycloak_middleware
 
 helm install keycloak bitnami/keycloak \
   -f ./keycloak/values.yaml \
