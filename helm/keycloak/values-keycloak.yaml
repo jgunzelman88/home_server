@@ -39,7 +39,7 @@ externalDatabase:
 # Use this if you have extra secrets (like SMTP or OIDC providers)
 extraEnvVars:
   - name: KC_HOSTNAME
-    value: "auth.example.com"
+    value: "bwing"
   - name: SOME_CUSTOM_SECRET
     valueFrom:
       secretKeyRef:
