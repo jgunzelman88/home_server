@@ -11,27 +11,32 @@ command:
   - "--http-relative-path=/keycloak"
   - "--hostname=bwing"
   - "--hostname-path=/keycloak"
-  - "--proxy=edge"
   - "--db=postgres"
+  - "--health-enabled=true"
 
 ## Keycloak environment variables
+## Must be a YAML string block (pipe |) for keycloakx chart
 extraEnv: |
   - name: KC_BOOTSTRAP_ADMIN_USERNAME
     value: "admin"
   - name: KC_BOOTSTRAP_ADMIN_PASSWORD
     valueFrom:
       secretKeyRef:
-        name: keycloak-secrets
-        key: admin-password
+        name: "keycloak-secrets"
+        key: "admin-password"
   - name: KC_DB_USERNAME
     value: "keycloak"
   - name: KC_DB_PASSWORD
     valueFrom:
       secretKeyRef:
-        name: postgres-custom-secrets
-        key: password
+        name: "postgres-custom-secrets"
+        key: "password"
   - name: KC_DB_URL
     value: "jdbc:postgresql://keycloak-postgresql/keycloak"
+  - name: KC_PROXY
+    value: "edge"
+  - name: KC_HTTP_ENABLED
+    value: "true"
 
 ## Replicas
 replicas: 1
@@ -59,28 +64,31 @@ ingress:
     traefik.ingress.kubernetes.io/router.middlewares: keycloak-keycloak-headers@kubernetescrd
   tls: []
 
-## Postgres - deployed separately, see init script
+## Postgres deployed separately via init script
 postgresql:
   enabled: false
 
-## Readiness/liveness probes - keycloak is slow to start
+## Probes - keycloak is slow to start, give it plenty of time
 startupProbe:
   httpGet:
     path: /keycloak/health
-    port: 8080
+    port: http
   failureThreshold: 60
   periodSeconds: 5
+  timeoutSeconds: 1
 
 livenessProbe:
   httpGet:
     path: /keycloak/health/live
-    port: 8080
+    port: http
   initialDelaySeconds: 0
   timeoutSeconds: 5
+  periodSeconds: 10
 
 readinessProbe:
   httpGet:
     path: /keycloak/health/ready
-    port: 8080
+    port: http
   initialDelaySeconds: 0
   timeoutSeconds: 1
+  periodSeconds: 10
