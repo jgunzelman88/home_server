@@ -1,7 +1,7 @@
 ## Keycloak Image - official free image
 image:
   repository: quay.io/keycloak/keycloak
-  tag: "24.0"
+  tag: "26.0"
   pullPolicy: IfNotPresent
 
 ## Keycloak command args
