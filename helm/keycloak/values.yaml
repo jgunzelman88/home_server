@@ -1,7 +1,7 @@
 ## Keycloak Image - official free image
 image:
   repository: quay.io/keycloak/keycloak
-  tag: "26.0"
+  tag: "24.0"
   pullPolicy: IfNotPresent
 
 ## Keycloak command args
@@ -10,7 +10,6 @@ command:
   - "start"
   - "--http-relative-path=/keycloak"
   - "--hostname=bwing"
-  - "--hostname-path=/keycloak"
   - "--db=postgres"
   - "--health-enabled=true"
   - "--http-enabled=true"
@@ -19,6 +18,10 @@ command:
 
 ## Keycloak environment variables - must be a string block for keycloakx
 extraEnv: |
+  - name: KC_HTTP_RELATIVE_PATH
+    value: "/keycloak"
+  - name: KC_CACHE_STACK
+    value: "kubernetes"
   - name: KC_BOOTSTRAP_ADMIN_USERNAME
     value: "admin"
   - name: KC_BOOTSTRAP_ADMIN_PASSWORD
