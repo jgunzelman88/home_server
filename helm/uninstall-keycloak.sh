@@ -13,6 +13,17 @@ uninstall_helm_release() {
     fi
 }
 
+uninstall_postgres() {
+    echo "--- Uninstalling PostgreSQL Helm release ---"
+
+    if ! helm status keycloak-postgresql -n "$namespace" >/dev/null 2>&1; then
+        echo "Helm release 'keycloak-postgresql' not found in namespace '$namespace'. Skipping."
+    else
+        helm uninstall keycloak-postgresql --namespace "$namespace"
+        echo "Helm release 'keycloak-postgresql' uninstalled."
+    fi
+}
+
 delete_secrets() {
     echo "--- Deleting secrets ---"
 
@@ -149,6 +160,7 @@ if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
 fi
 
 uninstall_helm_release
+uninstall_postgres
 delete_keycloak_middleware
 delete_secrets
 delete_pvcs

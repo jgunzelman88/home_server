@@ -1,67 +1,86 @@
-## Keycloak Authentication
-auth:
-  adminUser: admin
-  # Reference the secret created above for the admin password
-  existingSecret: "keycloak-secrets"
-  passwordSecretKey: "admin-password"
+## Keycloak Image - official free image
+image:
+  repository: quay.io/keycloak/keycloak
+  tag: "24.0"
+  pullPolicy: IfNotPresent
 
-postgresql:
-  enabled: true
-  auth:
-    # Use the secret we created above
-    existingSecret: "postgres-custom-secrets"
-    # The key inside the secret containing the postgres password
-    secretKeys:
-      adminPasswordKey: "password"
-      replicationPasswordKey: "replication-password"
-  
-  architecture: standalone # or 'replication' for HA
-  
-  primary:
-    persistence:
-      enabled: true
-      size: 4Gi
-      storageClass: "local-path" # k3s default storage class
-    
-    # Custom resources for the DB pod
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 250m
-        memory: 256Mi
+## Keycloak command args
+command:
+  - "/opt/keycloak/bin/kc.sh"
+  - "start"
+  - "--http-relative-path=/keycloak"
+  - "--hostname=bwing"
+  - "--hostname-path=/keycloak"
+  - "--proxy=edge"
+  - "--db=postgres"
 
-externalDatabase:
-  enabled: false
-
-## Custom Environment Variables
-extraEnvVars:
-  - name: KC_HOSTNAME
-    value: "bwing"
-  - name: KC_HOSTNAME_PATH
-    value: "/keycloak"
-  - name: KC_HTTP_RELATIVE_PATH
-    value: "/keycloak"
-  - name: KC_DB_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: postgres-custom-secrets
-        key: password
+## Keycloak environment variables
+extraEnv: |
+  - name: KC_BOOTSTRAP_ADMIN_USERNAME
+    value: "admin"
   - name: KC_BOOTSTRAP_ADMIN_PASSWORD
     valueFrom:
       secretKeyRef:
         name: keycloak-secrets
         key: admin-password
+  - name: KC_DB_USERNAME
+    value: "keycloak"
+  - name: KC_DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: postgres-custom-secrets
+        key: password
+  - name: KC_DB_URL
+    value: "jdbc:postgresql://keycloak-postgresql/keycloak"
+
+## Replicas
+replicas: 1
+
+## Resource limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 512Mi
 
 ## Ingress Settings
 ingress:
   enabled: true
-  hostname: bwing
-  path: /keycloak
+  ingressClassName: traefik
+  rules:
+    - host: bwing
+      paths:
+        - path: /keycloak
+          pathType: Prefix
   annotations:
-    kubernetes.io/ingress.class: traefik
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.entrypoints: web
     traefik.ingress.kubernetes.io/router.middlewares: keycloak-keycloak-headers@kubernetescrd
-  tls: true
+  tls: []
+
+## Postgres - deployed separately, see init script
+postgresql:
+  enabled: false
+
+## Readiness/liveness probes - keycloak is slow to start
+startupProbe:
+  httpGet:
+    path: /keycloak/health
+    port: 8080
+  failureThreshold: 60
+  periodSeconds: 5
+
+livenessProbe:
+  httpGet:
+    path: /keycloak/health/live
+    port: 8080
+  initialDelaySeconds: 0
+  timeoutSeconds: 5
+
+readinessProbe:
+  httpGet:
+    path: /keycloak/health/ready
+    port: 8080
+  initialDelaySeconds: 0
+  timeoutSeconds: 1
