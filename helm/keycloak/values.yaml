@@ -8,20 +8,21 @@ image:
 command:
   - "/opt/keycloak/bin/kc.sh"
   - "start"
-  - "--http-relative-path=/keycloak"
   - "--hostname=bwing"
   - "--db=postgres"
   - "--health-enabled=true"
   - "--http-enabled=true"
   - "--proxy=edge"
-  - "--cache-stack=kubernetes"
+
+## Override chart defaults
+http:
+  relativePath: "/keycloak"
+
+cache:
+  stack: kubernetes
 
 ## Keycloak environment variables - must be a string block for keycloakx
 extraEnv: |
-  - name: KC_HTTP_RELATIVE_PATH
-    value: "/keycloak"
-  - name: KC_CACHE_STACK
-    value: "kubernetes"
   - name: KC_BOOTSTRAP_ADMIN_USERNAME
     value: "admin"
   - name: KC_BOOTSTRAP_ADMIN_PASSWORD
