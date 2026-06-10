@@ -15,6 +15,7 @@ command:
   - "--health-enabled=true"
   - "--http-enabled=true"
   - "--proxy=edge"
+  - "--cache-stack=kubernetes"
 
 ## Keycloak environment variables - must be a string block for keycloakx
 extraEnv: |
