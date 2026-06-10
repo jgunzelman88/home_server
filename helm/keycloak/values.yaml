@@ -13,30 +13,27 @@ command:
   - "--hostname-path=/keycloak"
   - "--db=postgres"
   - "--health-enabled=true"
+  - "--http-enabled=true"
+  - "--proxy=edge"
 
-## Keycloak environment variables
-## Must be a YAML string block (pipe |) for keycloakx chart
+## Keycloak environment variables - must be a string block for keycloakx
 extraEnv: |
   - name: KC_BOOTSTRAP_ADMIN_USERNAME
     value: "admin"
   - name: KC_BOOTSTRAP_ADMIN_PASSWORD
     valueFrom:
       secretKeyRef:
-        name: "keycloak-secrets"
-        key: "admin-password"
+        name: keycloak-secrets
+        key: admin-password
   - name: KC_DB_USERNAME
     value: "keycloak"
   - name: KC_DB_PASSWORD
     valueFrom:
       secretKeyRef:
-        name: "postgres-custom-secrets"
-        key: "password"
+        name: postgres-custom-secrets
+        key: password
   - name: KC_DB_URL
     value: "jdbc:postgresql://keycloak-postgresql/keycloak"
-  - name: KC_PROXY
-    value: "edge"
-  - name: KC_HTTP_ENABLED
-    value: "true"
 
 ## Replicas
 replicas: 1
@@ -44,11 +41,11 @@ replicas: 1
 ## Resource limits
 resources:
   limits:
-    cpu: 500m
-    memory: 1Gi
+    cpu: "500m"
+    memory: "1Gi"
   requests:
-    cpu: 250m
-    memory: 512Mi
+    cpu: "250m"
+    memory: "512Mi"
 
 ## Ingress Settings
 ingress:
@@ -68,8 +65,8 @@ ingress:
 postgresql:
   enabled: false
 
-## Probes - keycloak is slow to start, give it plenty of time
-startupProbe:
+## Probes - keycloak is slow to start
+startupProbe: |
   httpGet:
     path: /keycloak/health
     port: http
@@ -77,7 +74,7 @@ startupProbe:
   periodSeconds: 5
   timeoutSeconds: 1
 
-livenessProbe:
+livenessProbe: |
   httpGet:
     path: /keycloak/health/live
     port: http
@@ -85,7 +82,7 @@ livenessProbe:
   timeoutSeconds: 5
   periodSeconds: 10
 
-readinessProbe:
+readinessProbe: |
   httpGet:
     path: /keycloak/health/ready
     port: http
