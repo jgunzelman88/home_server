@@ -12,7 +12,7 @@ command:
   - "--db=postgres"
   - "--health-enabled=true"
   - "--http-enabled=true"
-  - "--proxy=edge"
+  - "--proxy-headers=xforwarded"
 
 ## Override chart defaults
 http:
