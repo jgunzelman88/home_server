@@ -77,27 +77,27 @@ ingress:
 postgresql:
   enabled: false
 
-## Probes - keycloak is slow to start
+## Probes - keycloak 26 health endpoints are on management port 9000, no relative path prefix
 startupProbe: |
   httpGet:
-    path: /keycloak/health
-    port: http
+    path: /health
+    port: 9000
   failureThreshold: 60
   periodSeconds: 5
   timeoutSeconds: 1
 
 livenessProbe: |
   httpGet:
-    path: /keycloak/health/live
-    port: http
+    path: /health/live
+    port: 9000
   initialDelaySeconds: 0
   timeoutSeconds: 5
   periodSeconds: 10
 
 readinessProbe: |
   httpGet:
-    path: /keycloak/health/ready
-    port: http
+    path: /health/ready
+    port: 9000
   initialDelaySeconds: 0
   timeoutSeconds: 1
   periodSeconds: 10
