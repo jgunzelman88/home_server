@@ -80,7 +80,7 @@ postgresql:
 ## Probes - keycloak 26 health endpoints are on management port 9000, no relative path prefix
 startupProbe: |
   httpGet:
-    path: /health/started
+    path: /q/health/started
     port: 9000
   failureThreshold: 60
   periodSeconds: 5
@@ -88,7 +88,7 @@ startupProbe: |
 
 livenessProbe: |
   httpGet:
-    path: /health/live
+    path: /q/health/live
     port: 9000
   initialDelaySeconds: 0
   timeoutSeconds: 5
@@ -96,7 +96,7 @@ livenessProbe: |
 
 readinessProbe: |
   httpGet:
-    path: /health/ready
+    path: /q/health/ready
     port: 9000
   initialDelaySeconds: 0
   timeoutSeconds: 1
