@@ -20,14 +20,16 @@ http:
 cache:
   stack: kubernetes
 
-## Override chart proxy default - chart sets KC_PROXY_HEADERS via this value
+## Disable chart proxy setting to avoid duplicate KC_PROXY_HEADERS
 proxy:
-  mode: xforwarded
+  enabled: false
 
 ## Keycloak environment variables - must be a string block for keycloakx
 extraEnv: |
   - name: JAVA_OPTS_APPEND
     value: "-Xms512m -Xmx1024m"
+  - name: KC_PROXY_HEADERS
+    value: "xforwarded"
   - name: KC_BOOTSTRAP_ADMIN_USERNAME
     value: "admin"
   - name: KC_BOOTSTRAP_ADMIN_PASSWORD
