@@ -8,7 +8,7 @@ image:
 command:
   - "/opt/keycloak/bin/kc.sh"
   - "start"
-  - "--hostname=bwing"
+  - "--hostname=https://bwing/keycloak"
   - "--db=postgres"
   - "--health-enabled=true"
   - "--http-enabled=true"
@@ -69,9 +69,12 @@ ingress:
         - path: /keycloak
           pathType: Prefix
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/router.middlewares: keycloak-keycloak-headers@kubernetescrd
-  tls: []
+  tls:
+    - hosts:
+        - bwing
 
 ## Postgres deployed separately via init script
 postgresql:
