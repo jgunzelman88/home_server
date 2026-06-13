@@ -11,23 +11,28 @@ fullnameOverride: ""
 service:
   type: ClusterIP
   port: 8096
-  # Optional DLNA/discovery ports (set service.type to a LoadBalancer/NodePort capable type if you need these exposed)
   httpsPort: 8920
 
 ingress:
-  enabled: false
+  enabled: true
+
+  # Traefik IngressRoute config (recommended for k3s — uses native Traefik CRDs)
+  traefik:
+    enabled: true
+    host: bwing
+    path: /jellyfin
+    # certResolver: ""  # Leave empty for self-signed (fine for a LAN hostname).
+                        # Set to e.g. "letsencrypt" for an ACME cert.
+
+  # Generic Kubernetes Ingress — only used when traefik.enabled=false
   className: ""
   annotations: {}
-    # nginx.ingress.kubernetes.io/proxy-body-size: "0"
   hosts:
-    - host: jellyfin.example.com
+    - host: bwing
       paths:
-        - path: /
+        - path: /jellyfin
           pathType: Prefix
   tls: []
-    # - secretName: jellyfin-tls
-    #   hosts:
-    #     - jellyfin.example.com
 
 resources:
   requests:
@@ -52,17 +57,10 @@ persistence:
     size: 10Gi
     existingClaim: ""
 
-# Media library volumes. Each entry creates a PVC (or uses an existing one) mounted under /media/<name>
+# Media library volumes — disabled in favour of hostPathVolumes below
 mediaVolumes: []
-  # - name: media
-  #   enabled: true
-  #   existingClaim: ""
-  #   storageClass: ""
-  #   accessMode: ReadOnlyMany
-  #   size: 100Gi
-  #   mountPath: /media
 
-# Mount media directly from the k3s host's filesystem (useful for single-node clusters / NAS mounts on the node)
+# Host path mounts — maps directories on the k3s node directly into the container
 hostPathVolumes:
   - name: share1
     hostPath: /media/share1
@@ -76,13 +74,13 @@ hostPathVolumes:
 env:
   - name: TZ
     value: "UTC"
-  # - name: JELLYFIN_PublishedServerUrl
-  #   value: "https://jellyfin.example.com"
+  # Tell Jellyfin its public base URL so assets/redirects work under /jellyfin
+  - name: JELLYFIN_PublishedServerUrl
+    value: "https://bwing/jellyfin"
 
 nodeSelector: {}
-  # If using hostPathVolumes on a multi-node k3s cluster, pin this pod to the
-  # node that has /media/share1 and /media/share2, e.g.:
-  # kubernetes.io/hostname: my-k3s-node
+  # If on a multi-node cluster, pin to the node that has the host path mounts:
+  # kubernetes.io/hostname: bwing
 
 tolerations: []
 
@@ -95,5 +93,4 @@ securityContext: {}
 
 podAnnotations: {}
 
-# Run as a NodePort to allow Jellyfin's DLNA/network discovery on the LAN
 hostNetwork: false

@@ -1,38 +1,32 @@
 Jellyfin has been deployed!
 
-1. Get the application URL:
+{{- if and .Values.ingress.enabled .Values.ingress.traefik.enabled }}
 
+Access Jellyfin at:
+  https://{{ .Values.ingress.traefik.host }}{{ .Values.ingress.traefik.path }}
+
+Note: "{{ .Values.ingress.traefik.host }}" is a LAN hostname so Traefik will serve
+a self-signed certificate. You may see a browser security warning — this is expected.
+To suppress it either:
+  1. Install the Traefik CA cert on your devices (find it in the traefik pod under
+     /data/traefik.crt), or
+  2. Add a certResolver in values.yaml if you have ACME/Let's Encrypt configured.
+
+{{- else }}
+
+1. Get the application URL:
 {{- if .Values.ingress.enabled }}
 {{- range .Values.ingress.hosts }}
   http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}{{ (index .paths 0).path }}
 {{- end }}
 {{- else if eq .Values.service.type "ClusterIP" }}
-  Run:
-    kubectl port-forward svc/{{ include "jellyfin.fullname" . }} 8096:{{ .Values.service.port }} -n {{ .Release.Namespace }}
-  Then visit:
-    http://localhost:8096
-{{- else if eq .Values.service.type "NodePort" }}
-  Run:
-    export NODE_PORT=$(kubectl get svc {{ include "jellyfin.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}")
-    export NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[0].address}")
-    echo http://$NODE_IP:$NODE_PORT
-{{- else if eq .Values.service.type "LoadBalancer" }}
-  Run:
-    kubectl get svc {{ include "jellyfin.fullname" . }} -n {{ .Release.Namespace }} -w
-  to find the external IP, then visit it on port {{ .Values.service.port }}
+  kubectl port-forward svc/{{ include "jellyfin.fullname" . }} 8096:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+  Then visit: http://localhost:8096
 {{- end }}
 
-2. Complete the Jellyfin first-run setup wizard in your browser.
+{{- end }}
 
-3. Media volumes are mounted at:
-{{- range .Values.mediaVolumes }}
-{{- if .enabled }}
-   - {{ .mountPath }} ({{ .name }})
-{{- end }}
-{{- end }}
+Media volumes mounted at:
 {{- range .Values.hostPathVolumes }}
-   - {{ .mountPath }} (hostPath: {{ .hostPath }})
+  - {{ .mountPath }}  (host: {{ .hostPath }})
 {{- end }}
-
-Note: For hardware transcoding (Intel/Nvidia GPUs) you'll need to add the
-appropriate device resources/limits and securityContext to values.yaml.
