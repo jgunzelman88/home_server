@@ -1,0 +1,99 @@
+replicaCount: 1
+
+image:
+  repository: jellyfin/jellyfin
+  pullPolicy: IfNotPresent
+  tag: ""  # defaults to Chart.appVersion
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 8096
+  # Optional DLNA/discovery ports (set service.type to a LoadBalancer/NodePort capable type if you need these exposed)
+  httpsPort: 8920
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # nginx.ingress.kubernetes.io/proxy-body-size: "0"
+  hosts:
+    - host: jellyfin.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: jellyfin-tls
+    #   hosts:
+    #     - jellyfin.example.com
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+# Persistence for Jellyfin config/cache data
+persistence:
+  config:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 5Gi
+    existingClaim: ""
+  cache:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    existingClaim: ""
+
+# Media library volumes. Each entry creates a PVC (or uses an existing one) mounted under /media/<name>
+mediaVolumes: []
+  # - name: media
+  #   enabled: true
+  #   existingClaim: ""
+  #   storageClass: ""
+  #   accessMode: ReadOnlyMany
+  #   size: 100Gi
+  #   mountPath: /media
+
+# Mount media directly from the k3s host's filesystem (useful for single-node clusters / NAS mounts on the node)
+hostPathVolumes:
+  - name: share1
+    hostPath: /media/share1
+    mountPath: /media/share1
+    readOnly: false
+  - name: share2
+    hostPath: /media/share2
+    mountPath: /media/share2
+    readOnly: false
+
+env:
+  - name: TZ
+    value: "UTC"
+  # - name: JELLYFIN_PublishedServerUrl
+  #   value: "https://jellyfin.example.com"
+
+nodeSelector: {}
+  # If using hostPathVolumes on a multi-node k3s cluster, pin this pod to the
+  # node that has /media/share1 and /media/share2, e.g.:
+  # kubernetes.io/hostname: my-k3s-node
+
+tolerations: []
+
+affinity: {}
+
+securityContext: {}
+  # runAsUser: 1000
+  # runAsGroup: 1000
+  # fsGroup: 1000
+
+podAnnotations: {}
+
+# Run as a NodePort to allow Jellyfin's DLNA/network discovery on the LAN
+hostNetwork: false

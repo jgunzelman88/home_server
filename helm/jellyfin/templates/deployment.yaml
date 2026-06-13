@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "jellyfin.fullname" . }}
+  labels:
+    {{- include "jellyfin.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.hostNetwork }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "jellyfin.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "jellyfin.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- if .Values.hostNetwork }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- end }}
+      {{- with .Values.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: jellyfin
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8096
+              protocol: TCP
+            - name: https
+              containerPort: 8920
+              protocol: TCP
+            - name: discovery
+              containerPort: 1900
+              protocol: UDP
+            - name: client-disc
+              containerPort: 7359
+              protocol: UDP
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.persistence.config.enabled }}
+            - name: config
+              mountPath: /config
+            {{- end }}
+            {{- if .Values.persistence.cache.enabled }}
+            - name: cache
+              mountPath: /cache
+            {{- end }}
+            {{- range .Values.mediaVolumes }}
+            {{- if .enabled }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ eq .accessMode "ReadOnlyMany" }}
+            {{- end }}
+            {{- end }}
+            {{- range .Values.hostPathVolumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly | default false }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        {{- if .Values.persistence.config.enabled }}
+        - name: config
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.config.existingClaim | default (printf "%s-config" (include "jellyfin.fullname" .)) }}
+        {{- end }}
+        {{- if .Values.persistence.cache.enabled }}
+        - name: cache
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.cache.existingClaim | default (printf "%s-cache" (include "jellyfin.fullname" .)) }}
+        {{- end }}
+        {{- range .Values.mediaVolumes }}
+        {{- if .enabled }}
+        - name: {{ .name }}
+          persistentVolumeClaim:
+            claimName: {{ .existingClaim | default (printf "%s-%s" (include "jellyfin.fullname" $) .name) }}
+        {{- end }}
+        {{- end }}
+        {{- range .Values.hostPathVolumes }}
+        - name: {{ .name }}
+          hostPath:
+            path: {{ .hostPath }}
+            type: DirectoryOrCreate
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

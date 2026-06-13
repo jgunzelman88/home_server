@@ -1,0 +1,38 @@
+Jellyfin has been deployed!
+
+1. Get the application URL:
+
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}{{ (index .paths 0).path }}
+{{- end }}
+{{- else if eq .Values.service.type "ClusterIP" }}
+  Run:
+    kubectl port-forward svc/{{ include "jellyfin.fullname" . }} 8096:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+  Then visit:
+    http://localhost:8096
+{{- else if eq .Values.service.type "NodePort" }}
+  Run:
+    export NODE_PORT=$(kubectl get svc {{ include "jellyfin.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}")
+    export NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[0].address}")
+    echo http://$NODE_IP:$NODE_PORT
+{{- else if eq .Values.service.type "LoadBalancer" }}
+  Run:
+    kubectl get svc {{ include "jellyfin.fullname" . }} -n {{ .Release.Namespace }} -w
+  to find the external IP, then visit it on port {{ .Values.service.port }}
+{{- end }}
+
+2. Complete the Jellyfin first-run setup wizard in your browser.
+
+3. Media volumes are mounted at:
+{{- range .Values.mediaVolumes }}
+{{- if .enabled }}
+   - {{ .mountPath }} ({{ .name }})
+{{- end }}
+{{- end }}
+{{- range .Values.hostPathVolumes }}
+   - {{ .mountPath }} (hostPath: {{ .hostPath }})
+{{- end }}
+
+Note: For hardware transcoding (Intel/Nvidia GPUs) you'll need to add the
+appropriate device resources/limits and securityContext to values.yaml.

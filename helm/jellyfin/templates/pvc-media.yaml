@@ -1,0 +1,20 @@
+{{- range .Values.mediaVolumes }}
+{{- if and .enabled (not .existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "jellyfin.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "jellyfin.labels" $ | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .accessMode }}
+  {{- if .storageClass }}
+  storageClassName: {{ .storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .size }}
+{{- end }}
+{{- end }}
