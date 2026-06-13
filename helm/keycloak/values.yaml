@@ -77,10 +77,10 @@ ingress:
 postgresql:
   enabled: false
 
-## Probes - keycloak 26 health endpoints are on management port 9000, no relative path prefix
+## Probes - keycloak 26 management port (9000) inherits the http relative path
 startupProbe: |
   httpGet:
-    path: /q/health/started
+    path: /keycloak/health/started
     port: 9000
   failureThreshold: 60
   periodSeconds: 5
@@ -88,7 +88,7 @@ startupProbe: |
 
 livenessProbe: |
   httpGet:
-    path: /q/health/live
+    path: /keycloak/health/live
     port: 9000
   initialDelaySeconds: 0
   timeoutSeconds: 5
@@ -96,7 +96,7 @@ livenessProbe: |
 
 readinessProbe: |
   httpGet:
-    path: /q/health/ready
+    path: /keycloak/health/ready
     port: 9000
   initialDelaySeconds: 0
   timeoutSeconds: 1
