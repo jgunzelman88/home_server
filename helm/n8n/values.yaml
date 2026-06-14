@@ -1,0 +1,103 @@
+# n8n Helm Chart Values
+# Target: https://bwing/n8n (k3s / Traefik ingress)
+
+replicaCount: 1
+
+image:
+  repository: n8nio/n8n
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+nameOverride: ""
+fullnameOverride: "n8n"
+
+# -------------------------------------------------------
+# n8n application config
+# -------------------------------------------------------
+n8n:
+  # Sub-path n8n is served under
+  path: /n8n
+
+  # Publicly reachable URL (used for webhooks, OAuth callbacks, etc.)
+  webhookUrl: "https://bwing/n8n/"
+
+  # Encryption key for credentials stored in DB – CHANGE THIS or use a Secret
+  encryptionKey: "changeme-use-a-secret"
+
+  # Basic auth (optional – remove the block to disable)
+  basicAuth:
+    enabled: false
+    user: "admin"
+    password: "changeme"
+
+  # Execution mode: "regular" | "queue"
+  executionMode: regular
+
+  # Timezone
+  timezone: "UTC"
+
+# -------------------------------------------------------
+# Persistence (SQLite by default; swap for Postgres below)
+# -------------------------------------------------------
+persistence:
+  enabled: true
+  storageClass: "local-path"   # k3s default provisioner
+  accessMode: ReadWriteOnce
+  size: 2Gi
+  mountPath: /home/node/.n8n
+
+# -------------------------------------------------------
+# Optional: external PostgreSQL
+# -------------------------------------------------------
+postgresql:
+  enabled: false
+  host: "postgres-svc"
+  port: 5432
+  database: "n8n"
+  user: "n8n"
+  password: "changeme"
+
+# -------------------------------------------------------
+# Service
+# -------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 5678
+
+# -------------------------------------------------------
+# Ingress (Traefik – k3s default)
+# -------------------------------------------------------
+ingress:
+  enabled: true
+  className: "traefik"
+  host: bwing
+  tls:
+    enabled: true
+    # Leave secretName empty to use k3s / Traefik's self-signed cert,
+    # or set to a cert-manager managed secret name.
+    secretName: ""
+
+# -------------------------------------------------------
+# Resources
+# -------------------------------------------------------
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# -------------------------------------------------------
+# Security
+# -------------------------------------------------------
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsUser: 1000
+  runAsNonRoot: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

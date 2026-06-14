@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "n8n.fullname" . }}-config
+  labels:
+    {{- include "n8n.labels" . | nindent 4 }}
+data:
+  # ------------------------------------------------------------------
+  # Path / URL settings  (critical for sub-path operation)
+  # ------------------------------------------------------------------
+  N8N_PATH: {{ .Values.n8n.path | quote }}
+  N8N_HOST: {{ .Values.ingress.host | quote }}
+  N8N_PORT: "5678"
+  N8N_PROTOCOL: "https"
+  WEBHOOK_URL: {{ .Values.n8n.webhookUrl | quote }}
+
+  # Needed so that n8n generates correct absolute URLs for all assets
+  N8N_EDITOR_BASE_URL: {{ printf "https://%s%s/" .Values.ingress.host .Values.n8n.path | quote }}
+
+  # ------------------------------------------------------------------
+  # Basic auth
+  # ------------------------------------------------------------------
+  N8N_BASIC_AUTH_ACTIVE: {{ .Values.n8n.basicAuth.enabled | quote }}
+  {{- if .Values.n8n.basicAuth.enabled }}
+  N8N_BASIC_AUTH_USER: {{ .Values.n8n.basicAuth.user | quote }}
+  {{- end }}
+
+  # ------------------------------------------------------------------
+  # Execution / misc
+  # ------------------------------------------------------------------
+  EXECUTIONS_MODE: {{ .Values.n8n.executionMode | quote }}
+  GENERIC_TIMEZONE: {{ .Values.n8n.timezone | quote }}
+  N8N_LOG_LEVEL: "info"
+
+  # ------------------------------------------------------------------
+  # Database: PostgreSQL (only when enabled)
+  # ------------------------------------------------------------------
+  {{- if .Values.postgresql.enabled }}
+  DB_TYPE: "postgresdb"
+  DB_POSTGRESDB_HOST: {{ .Values.postgresql.host | quote }}
+  DB_POSTGRESDB_PORT: {{ .Values.postgresql.port | quote }}
+  DB_POSTGRESDB_DATABASE: {{ .Values.postgresql.database | quote }}
+  DB_POSTGRESDB_USER: {{ .Values.postgresql.user | quote }}
+  {{- else }}
+  DB_TYPE: "sqlite"
+  DB_SQLITE_DATABASE: "/home/node/.n8n/database.sqlite"
+  {{- end }}

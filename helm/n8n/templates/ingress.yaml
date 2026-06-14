@@ -1,0 +1,44 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "n8n.fullname" . }}
+  labels:
+    {{- include "n8n.labels" . | nindent 4 }}
+  annotations:
+    # ------------------------------------------------------------------
+    # Traefik annotations (k3s default ingress controller)
+    # ------------------------------------------------------------------
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+
+    # Strip the /n8n prefix before forwarding to the pod so n8n
+    # receives requests at /, which it internally maps back via N8N_PATH.
+    traefik.ingress.kubernetes.io/router.middlewares: >-
+      {{ .Release.Namespace }}-{{ include "n8n.fullname" . }}-stripprefix@kubernetescrd
+
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if and .Values.ingress.tls.enabled .Values.ingress.tls.secretName }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- else if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          # Match /n8n and everything under it
+          - path: {{ .Values.n8n.path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "n8n.fullname" . }}
+                port:
+                  number: {{ .Values.service.port }}
+{{- end }}
