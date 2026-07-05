@@ -1,0 +1,6 @@
+apiVersion: v2
+name: octoprint
+description: OctoPrint on k3s with privileged USB access and Traefik subpath ingress
+type: application
+version: 0.1.0
+appVersion: "1.10"

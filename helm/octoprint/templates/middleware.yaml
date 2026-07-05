@@ -1,0 +1,24 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: {{ .Values.ingress.traefikApiVersion }}
+kind: Middleware
+metadata:
+  name: {{ include "octoprint.fullname" . }}-stripprefix
+  labels:
+    {{- include "octoprint.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - {{ .Values.ingress.path }}
+---
+apiVersion: {{ .Values.ingress.traefikApiVersion }}
+kind: Middleware
+metadata:
+  name: {{ include "octoprint.fullname" . }}-headers
+  labels:
+    {{- include "octoprint.labels" . | nindent 4 }}
+spec:
+  headers:
+    customRequestHeaders:
+      X-Script-Name: {{ .Values.ingress.path }}
+      X-Scheme: http
+{{- end }}

@@ -1,0 +1,45 @@
+image:
+  repository: octoprint/octoprint
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Privileged so the container can talk to USB serial devices on the host
+privileged: true
+
+# Mount the host's /dev so the printer is found no matter how it enumerates
+hostDev:
+  enabled: true
+  path: /dev
+
+# Pin to the node the printer is physically plugged into, e.g.:
+# nodeSelector:
+#   kubernetes.io/hostname: bwing
+nodeSelector: {}
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: traefik
+  host: bwing
+  path: /octoprint
+  # k3s >= v1.25 ships Traefik v2/v3 using traefik.io;
+  # very old installs may need traefik.containo.us
+  traefikApiVersion: traefik.io/v1alpha1
+  annotations: {}
+
+persistence:
+  enabled: true
+  size: 5Gi
+  # empty = k3s default (local-path)
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  existingClaim: ""
+
+env: []
+#  - name: ENABLE_MJPG_STREAMER
+#    value: "true"
+
+resources: {}
