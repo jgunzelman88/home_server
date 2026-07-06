@@ -1,6 +1,6 @@
 image:
   repository: octoprint/octoprint
-  tag: latest
+  tag: canary
   pullPolicy: IfNotPresent
 
 # Privileged so the container can talk to USB serial devices on the host
