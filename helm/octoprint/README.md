@@ -28,6 +28,20 @@ helm install octoprint ./octoprint -n octoprint --create-namespace \
 - **Storage**: a PVC (k3s `local-path` by default) mounted at `/octoprint`
   keeps config, uploaded gcode, and timelapses across restarts.
 
+## Subpath fix (v0.1.1)
+
+OctoPrint 1.9+ ignores `X-Script-Name` from proxies it doesn't trust, so the
+UI loads but its API/socket calls go to `/api/...` instead of
+`/octoprint/api/...` and the page hangs. This chart now runs an init
+container that writes into `config.yaml`:
+
+- `server.reverseProxy.prefixFallback: /octoprint` (from `ingress.path`)
+- `server.reverseProxy.trustedDownstream`: 127.0.0.1/8, ::1, 10.42.0.0/16
+
+If your cluster's pod CIDR isn't the k3s default `10.42.0.0/16`, override
+`reverseProxyConfig.trustedDownstream`. Disable the whole mechanism with
+`reverseProxyConfig.enabled=false`.
+
 ## Notes
 
 - Old Traefik v1 installs: set `ingress.traefikApiVersion=traefik.containo.us/v1alpha1`.

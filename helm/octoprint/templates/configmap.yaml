@@ -1,0 +1,31 @@
+{{- if .Values.reverseProxyConfig.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "octoprint.fullname" . }}-scripts
+  labels:
+    {{- include "octoprint.labels" . | nindent 4 }}
+data:
+  setup-prefix.py: |
+    import os, yaml
+    base = "/octoprint/octoprint"
+    os.makedirs(base, exist_ok=True)
+    p = os.path.join(base, "config.yaml")
+    cfg = {}
+    if os.path.exists(p):
+        with open(p) as f:
+            cfg = yaml.safe_load(f) or {}
+    rp = cfg.setdefault("server", {}).setdefault("reverseProxy", {})
+    rp["prefixHeader"] = "X-Script-Name"
+    rp["schemeHeader"] = "X-Scheme"
+    rp["prefixFallback"] = os.environ.get("OCTO_PREFIX", "/")
+    rp["schemeFallback"] = os.environ.get("OCTO_SCHEME", "http")
+    trusted = [x.strip() for x in os.environ.get("OCTO_TRUSTED", "").split(",") if x.strip()]
+    if trusted:
+        rp["trustedDownstream"] = trusted
+    with open(p, "w") as f:
+        yaml.safe_dump(cfg, f, default_flow_style=False)
+    st = os.stat(base)
+    os.chown(p, st.st_uid, st.st_gid)
+    print("reverseProxy config written:", rp)
+{{- end }}

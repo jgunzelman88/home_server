@@ -38,6 +38,17 @@ persistence:
   accessMode: ReadWriteOnce
   existingClaim: ""
 
+# Writes server.reverseProxy settings into OctoPrint's config.yaml at pod start
+# so the UI/API work under the /octoprint subpath (OctoPrint 1.9+ ignores
+# X-Script-Name from untrusted proxies, which makes the UI hang).
+reverseProxyConfig:
+  enabled: true
+  scheme: http
+  trustedDownstream:
+    - 127.0.0.1/8
+    - "::1"
+    - 10.42.0.0/16   # stock k3s pod CIDR (Traefik pod)
+
 env: []
 #  - name: ENABLE_MJPG_STREAMER
 #    value: "true"

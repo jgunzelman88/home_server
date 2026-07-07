@@ -20,6 +20,25 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.reverseProxyConfig.enabled }}
+      initContainers:
+        - name: reverse-proxy-config
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python3", "/scripts/setup-prefix.py"]
+          env:
+            - name: OCTO_PREFIX
+              value: {{ .Values.ingress.path | quote }}
+            - name: OCTO_SCHEME
+              value: {{ .Values.reverseProxyConfig.scheme | quote }}
+            - name: OCTO_TRUSTED
+              value: {{ join "," .Values.reverseProxyConfig.trustedDownstream | quote }}
+          volumeMounts:
+            - name: data
+              mountPath: /octoprint
+            - name: scripts
+              mountPath: /scripts
+      {{- end }}
       containers:
         - name: octoprint
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -68,4 +87,9 @@ spec:
         - name: host-dev
           hostPath:
             path: {{ .Values.hostDev.path }}
+        {{- end }}
+        {{- if .Values.reverseProxyConfig.enabled }}
+        - name: scripts
+          configMap:
+            name: {{ include "octoprint.fullname" . }}-scripts
         {{- end }}
