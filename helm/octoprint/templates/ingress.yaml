@@ -7,7 +7,7 @@ metadata:
     {{- include "octoprint.labels" . | nindent 4 }}
   annotations:
     traefik.ingress.kubernetes.io/router.middlewares: >-
-      {{ .Release.Namespace }}-{{ include "octoprint.fullname" . }}-stripprefix@kubernetescrd,{{ .Release.Namespace }}-{{ include "octoprint.fullname" . }}-headers@kubernetescrd
+      {{ .Release.Namespace }}-{{ include "octoprint.fullname" . }}-addslash@kubernetescrd,{{ .Release.Namespace }}-{{ include "octoprint.fullname" . }}-stripprefix@kubernetescrd,{{ .Release.Namespace }}-{{ include "octoprint.fullname" . }}-headers@kubernetescrd
     {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

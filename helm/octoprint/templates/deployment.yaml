@@ -33,6 +33,8 @@ spec:
               value: {{ .Values.reverseProxyConfig.scheme | quote }}
             - name: OCTO_TRUSTED
               value: {{ join "," .Values.reverseProxyConfig.trustedDownstream | quote }}
+            - name: OCTO_CSRF
+              value: {{ .Values.csrfProtection | quote }}
           volumeMounts:
             - name: data
               mountPath: /octoprint

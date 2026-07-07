@@ -49,6 +49,10 @@ reverseProxyConfig:
     - "::1"
     - 10.42.0.0/16   # stock k3s pod CIDR (Traefik pod)
 
+# Set false ONLY to diagnose/work around "CSRF validation failed" behind the
+# proxy chain; re-enable once resolved.
+csrfProtection: true
+
 env: []
 #  - name: ENABLE_MJPG_STREAMER
 #    value: "true"

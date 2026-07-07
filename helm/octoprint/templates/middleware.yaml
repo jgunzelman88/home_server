@@ -2,6 +2,18 @@
 apiVersion: {{ .Values.ingress.traefikApiVersion }}
 kind: Middleware
 metadata:
+  name: {{ include "octoprint.fullname" . }}-addslash
+  labels:
+    {{- include "octoprint.labels" . | nindent 4 }}
+spec:
+  redirectRegex:
+    regex: {{ printf "^(https?://[^/]+%s)$" .Values.ingress.path | quote }}
+    replacement: ${1}/
+    permanent: true
+---
+apiVersion: {{ .Values.ingress.traefikApiVersion }}
+kind: Middleware
+metadata:
   name: {{ include "octoprint.fullname" . }}-stripprefix
   labels:
     {{- include "octoprint.labels" . | nindent 4 }}

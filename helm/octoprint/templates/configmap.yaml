@@ -23,6 +23,11 @@ data:
     trusted = [x.strip() for x in os.environ.get("OCTO_TRUSTED", "").split(",") if x.strip()]
     if trusted:
         rp["trustedDownstream"] = trusted
+    csrf = os.environ.get("OCTO_CSRF", "true").lower()
+    if csrf in ("false", "0", "no"):
+        cfg.setdefault("devel", {})["enableCsrfProtection"] = False
+    else:
+        cfg.setdefault("devel", {}).pop("enableCsrfProtection", None)
     with open(p, "w") as f:
         yaml.safe_dump(cfg, f, default_flow_style=False)
     st = os.stat(base)
