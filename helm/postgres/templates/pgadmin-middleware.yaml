@@ -1,0 +1,41 @@
+{{- if and .Values.pgadmin.enabled .Values.pgadmin.ingress.enabled }}
+apiVersion: {{ .Values.pgadmin.ingress.traefikApiVersion }}
+kind: Middleware
+metadata:
+  name: {{ include "postgres.pgadmin.fullname" . }}-addslash
+  labels:
+    {{- include "postgres.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgadmin
+spec:
+  redirectRegex:
+    regex: {{ printf "^(https?://[^/]+%s)$" .Values.pgadmin.ingress.path | quote }}
+    replacement: ${1}/
+    permanent: true
+---
+apiVersion: {{ .Values.pgadmin.ingress.traefikApiVersion }}
+kind: Middleware
+metadata:
+  name: {{ include "postgres.pgadmin.fullname" . }}-stripprefix
+  labels:
+    {{- include "postgres.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgadmin
+spec:
+  stripPrefix:
+    prefixes:
+      - {{ .Values.pgadmin.ingress.path }}
+---
+# pgAdmin reads X-Script-Name / X-Scheme to rewrite the URLs it generates
+# so they keep working under the "{{ .Values.pgadmin.ingress.path }}" prefix.
+apiVersion: {{ .Values.pgadmin.ingress.traefikApiVersion }}
+kind: Middleware
+metadata:
+  name: {{ include "postgres.pgadmin.fullname" . }}-headers
+  labels:
+    {{- include "postgres.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgadmin
+spec:
+  headers:
+    customRequestHeaders:
+      X-Script-Name: {{ .Values.pgadmin.ingress.path }}
+      X-Scheme: {{ ternary "https" "http" .Values.pgadmin.ingress.tls.enabled }}
+{{- end }}

@@ -1,0 +1,18 @@
+{{- if and .Values.pgadmin.persistence.enabled (not .Values.pgadmin.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "postgres.pgadmin.fullname" . }}-data
+  labels:
+    {{- include "postgres.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgadmin
+spec:
+  accessModes:
+    - {{ .Values.pgadmin.persistence.accessMode }}
+  {{- if .Values.pgadmin.persistence.storageClass }}
+  storageClassName: {{ .Values.pgadmin.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.pgadmin.persistence.size }}
+{{- end }}

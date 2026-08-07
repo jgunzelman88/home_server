@@ -1,0 +1,109 @@
+{{- if .Values.pgadmin.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "postgres.pgadmin.fullname" . }}
+  labels:
+    {{- include "postgres.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgadmin
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "postgres.pgadmin.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "postgres.pgadmin.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Force a pod restart when the OIDC/proxy config or preloaded
+        # server list changes.
+        checksum/config: {{ include (print $.Template.BasePath "/pgadmin-configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        # dpage/pgadmin4 runs as uid/gid 5050.
+        fsGroup: 5050
+      containers:
+        - name: pgadmin
+          image: "{{ .Values.pgadmin.image.repository }}:{{ .Values.pgadmin.image.tag }}"
+          imagePullPolicy: {{ .Values.pgadmin.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          env:
+            - name: PGADMIN_DEFAULT_EMAIL
+              value: {{ .Values.pgadmin.auth.email | quote }}
+            - name: PGADMIN_DEFAULT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.pgadmin.auth.existingSecret | default (include "postgres.pgadmin.fullname" .) }}
+                  key: {{ .Values.pgadmin.auth.existingSecretKey | default "password" }}
+            {{- if .Values.pgadmin.oidc.enabled }}
+            - name: OAUTH2_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.pgadmin.oidc.existingSecret | default (include "postgres.pgadmin.fullname" .) }}
+                  key: {{ .Values.pgadmin.oidc.existingSecretKey | default "oauth2-client-secret" }}
+            {{- end }}
+            {{- if .Values.pgadmin.preloadServer.enabled }}
+            - name: PGADMIN_SERVER_JSON_FILE
+              value: /pgadmin4/servers.json
+            - name: PGADMIN_REPLACE_SERVERS_ON_STARTUP
+              value: {{ ternary "True" "False" .Values.pgadmin.preloadServer.replaceOnStartup | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/pgadmin
+            - name: config
+              mountPath: /pgadmin4/config_local.py
+              subPath: config_local.py
+            {{- if .Values.pgadmin.preloadServer.enabled }}
+            - name: config
+              mountPath: /pgadmin4/servers.json
+              subPath: servers.json
+            {{- end }}
+          livenessProbe:
+            # kubelet talks to the pod directly (not through the Traefik
+            # sub-path), so this always probes pgAdmin at its real root.
+            httpGet:
+              path: /login
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          {{- with .Values.pgadmin.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "postgres.pgadmin.fullname" . }}-config
+        - name: data
+        {{- if .Values.pgadmin.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.pgadmin.persistence.existingClaim | default (printf "%s-data" (include "postgres.pgadmin.fullname" .)) }}
+        {{- else }}
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.pgadmin.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pgadmin.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pgadmin.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

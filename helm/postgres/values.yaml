@@ -1,0 +1,156 @@
+# PostgreSQL + pgAdmin Helm Chart Values
+# Target: k3s / Traefik ingress, host "bwing" (matches the rest of ./helm/*)
+
+nameOverride: ""
+fullnameOverride: "postgres"
+
+# -------------------------------------------------------
+# PostgreSQL
+# -------------------------------------------------------
+postgresql:
+  image:
+    repository: postgres
+    tag: "16"
+    pullPolicy: IfNotPresent
+
+  auth:
+    # Name of the initial superuser Postgres creates on first boot.
+    username: postgres
+    # Default database created for that user.
+    database: postgres
+    # Used only when existingSecret is empty.
+    password: "changeme-please-set-a-real-password"
+    # Set this to reuse a Secret you created yourself instead of the one
+    # this chart generates. Must contain the key named by existingSecretKey.
+    existingSecret: ""
+    existingSecretKey: "password"
+
+  # ClusterIP Service other pods in the cluster use to reach Postgres, e.g.
+  # postgresql://<user>:<pass>@postgres.<namespace>.svc.cluster.local:5432/<db>
+  service:
+    type: ClusterIP
+    port: 5432
+
+  persistence:
+    enabled: true
+    size: 5Gi
+    # empty = k3s default (local-path)
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    existingClaim: ""
+
+  # Extra env vars appended to the postgres container (e.g. POSTGRES_INITDB_ARGS)
+  extraEnv: []
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# -------------------------------------------------------
+# pgAdmin
+# -------------------------------------------------------
+pgadmin:
+  enabled: true
+
+  image:
+    repository: dpage/pgadmin4
+    tag: "8"
+    pullPolicy: IfNotPresent
+
+  auth:
+    email: "admin@bwing.local"
+    # Used only when existingSecret is empty.
+    password: "changeme-please-set-a-real-password"
+    # Must contain the key named by existingSecretKey.
+    existingSecret: ""
+    existingSecretKey: "password"
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  ingress:
+    enabled: true
+    className: traefik
+    host: bwing
+    path: /pgadmin
+    # k3s >= v1.25 ships Traefik v2/v3 using traefik.io;
+    # very old installs may need traefik.containo.us
+    traefikApiVersion: traefik.io/v1alpha1
+    annotations: {}
+    tls:
+      enabled: true
+
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    existingClaim: ""
+
+  # Pre-load a connection to the bundled Postgres instance so pgAdmin is
+  # "connected to it" as soon as you log in. Only applied on first launch
+  # (pgAdmin only imports servers.json when its config DB is first created).
+  preloadServer:
+    enabled: true
+    name: "Postgres (in-cluster)"
+    # Re-import servers.json on every pod restart instead of only the first
+    # time. Handy while you're still tweaking values, noisy in steady state.
+    replaceOnStartup: false
+
+  # -----------------------------------------------------
+  # Single sign-on: pgAdmin -> Keycloak via OIDC
+  # -----------------------------------------------------
+  # Disabled by default because it requires a client to be created in
+  # Keycloak first. See templates/NOTES.txt / the chart README for the
+  # exact steps, then set oidc.enabled=true with matching values.
+  oidc:
+    enabled: false
+
+    # Shown as the "Sign in with ..." option on the pgAdmin login page.
+    name: "keycloak"
+    displayName: "Sign in with Keycloak"
+
+    # Client ID you create in Keycloak for pgAdmin.
+    clientId: "pgadmin"
+    # Used only when existingSecret is empty.
+    clientSecret: "changeme-client-secret"
+    # Must contain the key named by existingSecretKey.
+    existingSecret: ""
+    existingSecretKey: "oauth2-client-secret"
+
+    # Base URL of Keycloak and the realm the client lives in. Used to build
+    # the OIDC discovery URL unless serverMetadataUrl is set explicitly.
+    keycloakBaseUrl: "https://bwing/keycloak"
+    realm: "master"
+    # Overrides the auto-built discovery URL if set.
+    serverMetadataUrl: ""
+
+    scope: "openid email profile"
+    # Auto-provision a pgAdmin user the first time someone signs in via SSO.
+    autoCreateUser: true
+    # Also allow the local admin/internal login alongside SSO.
+    allowInternalLogin: true
+
+    icon: "fa-key"
+    buttonColor: "#2c3e50"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}

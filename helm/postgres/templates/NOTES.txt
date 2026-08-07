@@ -1,0 +1,51 @@
+PostgreSQL + pgAdmin installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+--------------------------------------------------------------------
+Connect another pod to Postgres
+--------------------------------------------------------------------
+Service DNS (works from any namespace):
+
+  {{ include "postgres.pg.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.postgresql.service.port }}
+
+From a pod in the same namespace, just:
+
+  {{ include "postgres.pg.fullname" . }}:{{ .Values.postgresql.service.port }}
+
+Credentials live in the Secret:
+{{- if .Values.postgresql.auth.existingSecret }}
+  {{ .Values.postgresql.auth.existingSecret }} (key: {{ .Values.postgresql.auth.existingSecretKey | default "password" }})
+{{- else }}
+  {{ include "postgres.pg.fullname" . }} (key: {{ .Values.postgresql.auth.existingSecretKey | default "password" }})
+{{- end }}
+
+{{- if .Values.pgadmin.enabled }}
+
+--------------------------------------------------------------------
+pgAdmin
+--------------------------------------------------------------------
+{{- if .Values.pgadmin.ingress.enabled }}
+  https://{{ .Values.pgadmin.ingress.host }}{{ .Values.pgadmin.ingress.path }}/
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "postgres.pgadmin.fullname" . }} 8080:{{ .Values.pgadmin.service.port }}
+{{- end }}
+
+  Login: {{ .Values.pgadmin.auth.email }}
+{{- if .Values.pgadmin.preloadServer.enabled }}
+  A connection to this release's Postgres is pre-loaded on first login
+  (name: "{{ .Values.pgadmin.preloadServer.name }}") — it will prompt for the
+  Postgres password the first time you open it.
+{{- end }}
+
+{{- if .Values.pgadmin.oidc.enabled }}
+
+  Keycloak SSO is enabled. Make sure a Keycloak client exists with:
+    Client ID:          {{ .Values.pgadmin.oidc.clientId }}
+    Valid redirect URI: https://{{ .Values.pgadmin.ingress.host }}{{ .Values.pgadmin.ingress.path }}/oauth2/authorize
+    Discovery URL used: {{ include "postgres.pgadmin.oidcMetadataUrl" . }}
+  See README.md in this chart for the full client setup steps.
+{{- else }}
+
+  Keycloak SSO is disabled (pgadmin.oidc.enabled=false). See README.md to
+  turn it on once you've created a client in Keycloak.
+{{- end }}
+{{- end }}

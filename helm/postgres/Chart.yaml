@@ -1,0 +1,6 @@
+apiVersion: v2
+name: postgres
+description: PostgreSQL database with a pgAdmin UI on k3s, exposed via a ClusterIP Service for other pods to connect to, with optional Keycloak OIDC SSO for pgAdmin
+type: application
+version: 0.1.0
+appVersion: "16"

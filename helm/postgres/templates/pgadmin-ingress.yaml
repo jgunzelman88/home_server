@@ -1,0 +1,35 @@
+{{- if and .Values.pgadmin.enabled .Values.pgadmin.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "postgres.pgadmin.fullname" . }}
+  labels:
+    {{- include "postgres.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgadmin
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: {{ .Values.pgadmin.ingress.tls.enabled | quote }}
+    traefik.ingress.kubernetes.io/router.middlewares: >-
+      {{ .Release.Namespace }}-{{ include "postgres.pgadmin.fullname" . }}-addslash@kubernetescrd,{{ .Release.Namespace }}-{{ include "postgres.pgadmin.fullname" . }}-stripprefix@kubernetescrd,{{ .Release.Namespace }}-{{ include "postgres.pgadmin.fullname" . }}-headers@kubernetescrd
+    {{- with .Values.pgadmin.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.pgadmin.ingress.className }}
+  {{- if .Values.pgadmin.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.pgadmin.ingress.host }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.pgadmin.ingress.host }}
+      http:
+        paths:
+          - path: {{ .Values.pgadmin.ingress.path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "postgres.pgadmin.fullname" . }}
+                port:
+                  name: http
+{{- end }}
