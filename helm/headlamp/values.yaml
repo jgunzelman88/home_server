@@ -37,9 +37,25 @@ config:
 
 ## OIDC_CALLBACK_URL has to exist as a real container env var for the
 ## "-oidc-callback-url=$(OIDC_CALLBACK_URL)" arg above to resolve.
+##
+## SSL_CERT_FILE trusts Traefik's cert for Headlamp's own OUTBOUND calls to
+## Keycloak (the discovery doc + token exchange the backend makes server-side
+## during login) - the "headlamp-ca" ConfigMap is created by
+## ./fix-headlamp-tls.sh. Go's crypto/x509 reads this env var on Linux.
 env:
   - name: OIDC_CALLBACK_URL
     value: "https://bwing/headlamp/oidc-callback"
+  - name: SSL_CERT_FILE
+    value: /extra-ca/ca.crt
+
+volumes:
+  - name: extra-ca
+    configMap:
+      name: headlamp-ca
+
+volumeMounts:
+  - name: extra-ca
+    mountPath: /extra-ca
 
 ## Cluster access granted to anyone who logs into this Headlamp instance.
 ## cluster-admin matches the other single-admin tools in this repo. Scope
