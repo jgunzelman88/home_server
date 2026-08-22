@@ -5,7 +5,7 @@ namespace="headlamp"
 keycloak_namespace="keycloak"
 host="bwing"
 
-realm="${HEADLAMP_KEYCLOAK_REALM:-home}"
+realm="${HEADLAMP_KEYCLOAK_REALM:-master}"
 client_id="${HEADLAMP_KEYCLOAK_CLIENT_ID:-headlamp}"
 
 helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/
