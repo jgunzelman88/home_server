@@ -87,12 +87,19 @@ create_headlamp_client() {
         echo "Client '$client_id' created (id=$client_uuid)."
     fi
 
-    client_secret=$(kcadm create "clients/$client_uuid/client-secret" -r "$realm" \
+    # `create` regenerates the secret but doesn't reliably print it (no
+    # Location header on this endpoint, so kcadm's output format here isn't
+    # guaranteed) - fetch the value back with a separate `get` instead.
+    kcadm create "clients/$client_uuid/client-secret" -r "$realm" >/dev/null
+
+    client_secret=$(kcadm get "clients/$client_uuid/client-secret" -r "$realm" \
       | grep -oE '"value"[[:space:]]*:[[:space:]]*"[^"]+"' \
-      | sed -E 's/.*"([^"]+)"$/\1/')
+      | sed -E 's/.*"([^"]+)"$/\1/' || true)
 
     if [ -z "$client_secret" ]; then
         echo "Error: failed to read the generated client secret from Keycloak." >&2
+        echo "Run this by hand to see what Keycloak actually returned:" >&2
+        echo "  kubectl exec -n $keycloak_namespace $keycloak_pod -- /opt/keycloak/bin/kcadm.sh get clients/$client_uuid/client-secret -r $realm --config /tmp/kcadm.config" >&2
         exit 1
     fi
 }
