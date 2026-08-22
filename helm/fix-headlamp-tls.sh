@@ -1,6 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
+# NOTE: this trusts whatever ad-hoc cert Traefik happens to be presenting
+# *right now*, which can regenerate on a Traefik restart and silently break
+# again later. For the durable fix (a stable cert-manager CA that Traefik
+# always serves for "bwing", which also covers every other app in this repo),
+# run ./init-tls.sh instead - this script is kept as a quick one-off fallback.
+
 namespace="headlamp"
 host="bwing"
 

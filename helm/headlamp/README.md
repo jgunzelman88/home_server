@@ -72,6 +72,25 @@ password under the Credentials tab) - that's who can log into Headlamp.
   (`--oidc-issuer-url`, etc.) - out of scope here, but Headlamp's own docs
   cover it if you want to go further.
 
+## Making the TLS trust permanent
+
+Headlamp's OIDC login requires its backend to make outbound HTTPS calls to
+Keycloak (the discovery doc + token exchange), which means it must trust
+whatever cert Traefik presents for `bwing`. By default that's Traefik's own
+ad-hoc self-signed cert, which **can regenerate on a Traefik restart** and
+silently break SSO again.
+
+Run `../init-tls.sh` once to fix this properly: it mints a stable, self-signed
+homelab CA via cert-manager, issues a long-lived leaf cert for `bwing` from
+it, points Traefik's `TLSStore` at that cert (which benefits every app in
+this repo, not just Headlamp), and drops the CA into a `headlamp-ca`
+ConfigMap that this chart's `values.yaml` already mounts via `SSL_CERT_FILE`.
+After that, Traefik's cert for `bwing` stops changing out from under you.
+
+`./fix-headlamp-tls.sh` still exists as a quick one-off fallback (it just
+trusts whatever cert Traefik happens to be serving right now), but it can
+need re-running if Traefik ever regenerates its default cert.
+
 ## Rotating the client secret
 
 Re-run `init-headlamp.sh` - it detects the existing `headlamp` client,
