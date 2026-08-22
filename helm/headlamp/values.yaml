@@ -1,0 +1,99 @@
+## Headlamp - official Kubernetes web UI image
+## Chart source: https://kubernetes-sigs.github.io/headlamp/
+## Installed with: helm install headlamp headlamp/headlamp -f ./headlamp/values.yaml -n headlamp
+image:
+  registry: ghcr.io
+  repository: headlamp-k8s/headlamp
+  pullPolicy: IfNotPresent
+  # tag: ""   # empty tracks the chart's appVersion
+
+## Replicas
+replicaCount: 1
+
+config:
+  ## Use the in-cluster service account for talking to the Kubernetes API
+  inCluster: true
+
+  ## Serve Headlamp under the /headlamp subpath, behind Traefik, matching the
+  ## rest of this repo's apps (bwing/keycloak, bwing/n8n, bwing/octoprint, ...)
+  baseURL: "/headlamp"
+
+  ## --- Keycloak SSO login ---
+  ## The client + secret are created by ./init-headlamp.sh against the
+  ## existing Keycloak instance (see ../keycloak). The secret it writes
+  ## ("headlamp-oidc") is consumed here instead of putting real credentials
+  ## in this file - never commit an actual client secret to this repo.
+  oidc:
+    secret:
+      create: false
+    externalSecret:
+      enabled: true
+      name: headlamp-oidc
+      # our secret includes an OIDC_SCOPES key
+      hasScopes: true
+    # Set explicitly (rather than left to be inferred from the request) since
+    # Headlamp sits behind a Traefik subpath - see headlamp/README.md.
+    callbackURL: "https://bwing/headlamp/oidc-callback"
+
+## OIDC_CALLBACK_URL has to exist as a real container env var for the
+## "-oidc-callback-url=$(OIDC_CALLBACK_URL)" arg above to resolve.
+env:
+  - name: OIDC_CALLBACK_URL
+    value: "https://bwing/headlamp/oidc-callback"
+
+## Cluster access granted to anyone who logs into this Headlamp instance.
+## cluster-admin matches the other single-admin tools in this repo. Scope
+## this down (e.g. to a custom read-only ClusterRole) if multiple Keycloak
+## users will log in and shouldn't all get full cluster access.
+clusterRoleBinding:
+  create: true
+  clusterRoleName: cluster-admin
+
+serviceAccount:
+  create: true
+
+## Resource limits
+resources:
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+
+## Ingress Settings
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  hosts:
+    - host: bwing
+      paths:
+        - path: /headlamp
+          type: Prefix
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    # "<namespace>-<middleware-name>@kubernetescrd", same convention as
+    # helm/keycloak/values.yaml's keycloak-keycloak-headers reference
+    traefik.ingress.kubernetes.io/router.middlewares: headlamp-headlamp-headers@kubernetescrd
+  ## No tls.secretName here on purpose: like the other charts in this repo,
+  ## TLS termination is handled by Traefik's default cert on the websecure
+  ## entrypoint (see helm/init-keycloak.sh's configure_traefik), not a
+  ## per-ingress Kubernetes TLS secret.
+
+## Declarative Traefik Middleware that forces X-Forwarded-Proto: https, same
+## role as the keycloak-headers Middleware init-keycloak.sh creates for
+## Keycloak - kept here instead of a kubectl-apply step in init-headlamp.sh
+## so it's created/removed automatically with the Helm release.
+extraManifests:
+  - |
+    apiVersion: traefik.io/v1alpha1
+    kind: Middleware
+    metadata:
+      name: headlamp-headers
+      namespace: {{ .Release.Namespace }}
+    spec:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: "https"
+        sslRedirect: true
