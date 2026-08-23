@@ -1,12 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+
 namespace="headlamp"
 keycloak_namespace="keycloak"
-host="bwing"
-
-realm="${HEADLAMP_KEYCLOAK_REALM:-master}"
-client_id="${HEADLAMP_KEYCLOAK_CLIENT_ID:-headlamp}"
+host="$HOST"
+realm="$HEADLAMP_KEYCLOAK_REALM"
+client_id="$HEADLAMP_KEYCLOAK_CLIENT_ID"
 
 helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/
 helm repo update
@@ -136,6 +137,21 @@ install_headlamp() {
     fi
 }
 
+restart_headlamp() {
+    # OIDC_CLIENT_SECRET is injected via envFrom on the Secret above, and
+    # Kubernetes only reads that at pod start - it does NOT hot-reload when
+    # the Secret's contents change. If create_headlamp_client() regenerated
+    # the secret but `helm upgrade` didn't otherwise change the Deployment's
+    # pod template, the already-running pod keeps its OLD secret in memory
+    # while Keycloak now has a new one, and login fails with Keycloak's
+    # generic "unauthorized_client: Invalid client or Invalid client
+    # credentials". Force a rollout every run so this can't happen silently.
+    echo "--- Restarting Headlamp so it picks up the current client secret ---"
+    kubectl rollout restart deployment/headlamp -n "$namespace" 2>/dev/null \
+      || echo "(couldn't find deployment/headlamp - check 'kubectl get deploy -n $namespace' for the real name and restart it manually)"
+    kubectl rollout status deployment/headlamp -n "$namespace" --timeout=120s 2>/dev/null || true
+}
+
 # --- Run ---
 create_namespace
 find_keycloak_pod
@@ -144,6 +160,7 @@ create_realm_if_missing
 create_headlamp_client
 create_headlamp_secret
 install_headlamp
+restart_headlamp
 
 echo ""
 echo "--- Headlamp install complete ---"

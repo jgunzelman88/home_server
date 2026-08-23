@@ -1,9 +1,11 @@
 #!/bin/bash
 
+source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+
 namespace="headlamp"
 keycloak_namespace="keycloak"
-realm="${HEADLAMP_KEYCLOAK_REALM:-home}"
-client_id="${HEADLAMP_KEYCLOAK_CLIENT_ID:-headlamp}"
+realm="$HEADLAMP_KEYCLOAK_REALM"
+client_id="$HEADLAMP_KEYCLOAK_CLIENT_ID"
 
 uninstall_helm_release() {
     echo "--- Uninstalling Headlamp Helm release ---"

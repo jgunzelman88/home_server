@@ -21,12 +21,14 @@ set -euo pipefail
 
 export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 
+source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+
 config_file="/etc/rancher/k3s/config.yaml"
 ca_dest="/etc/rancher/k3s/homelab-ca.crt"
-realm="${HEADLAMP_KEYCLOAK_REALM:-master}"
-client_id="${HEADLAMP_KEYCLOAK_CLIENT_ID:-headlamp}"
-group_prefix="${K8S_GROUP_PREFIX:-oidc:}"
-host="bwing"
+realm="$HEADLAMP_KEYCLOAK_REALM"
+client_id="$HEADLAMP_KEYCLOAK_CLIENT_ID"
+group_prefix="$K8S_GROUP_PREFIX"
+host="$HOST"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Run this as root (sudo ./configure-k3s-oidc.sh)." >&2

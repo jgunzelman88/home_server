@@ -17,11 +17,12 @@ set -euo pipefail
 # matter, but neither one does anything for real Kubernetes access until
 # both have run.
 
+source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+
 keycloak_namespace="keycloak"
-realm="${HEADLAMP_KEYCLOAK_REALM:-master}"
-client_id="${HEADLAMP_KEYCLOAK_CLIENT_ID:-headlamp}"
-# Must match --oidc-groups-prefix in configure-k3s-oidc.sh
-group_prefix="${K8S_GROUP_PREFIX:-oidc:}"
+realm="$HEADLAMP_KEYCLOAK_REALM"
+client_id="$HEADLAMP_KEYCLOAK_CLIENT_ID"
+group_prefix="$K8S_GROUP_PREFIX"
 
 find_keycloak_pod() {
     keycloak_pod=$(kubectl get pods -n "$keycloak_namespace" -l app.kubernetes.io/instance=keycloak \

@@ -1,38 +1,11 @@
 #!/bin/bash
+set -euo pipefail
 
 namespace="keycloak"
 
 helm repo add codecentric https://codecentric.github.io/helm-charts
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
-
-configure_traefik() {
-    echo "--- Configuring Traefik for HTTPS ---"
-
-    cat > /var/lib/rancher/k3s/server/manifests/traefik-config.yaml <<TRAEFIK
-apiVersion: helm.cattle.io/v1
-kind: HelmChartConfig
-metadata:
-  name: traefik
-  namespace: kube-system
-spec:
-  valuesContent: |-
-    ports:
-      web:
-        redirectTo:
-          port: websecure
-      websecure:
-        tls:
-          enabled: true
-    ingressRoute:
-      dashboard:
-        enabled: false
-TRAEFIK
-
-    echo "Traefik config applied. Waiting for rollout..."
-    kubectl rollout restart deployment/traefik -n kube-system
-    kubectl rollout status deployment/traefik -n kube-system --timeout=60s
-}
 
 install_cert_manager() {
     echo "--- Installing cert-manager ---"
@@ -52,7 +25,12 @@ install_cert_manager() {
 create_cluster_issuer() {
     echo "--- Creating ClusterIssuer ---"
 
-    if [ -z "$CERT_MANAGER_EMAIL" ]; then
+    if kubectl get clusterissuer letsencrypt-prod >/dev/null 2>&1; then
+        echo "ClusterIssuer 'letsencrypt-prod' already exists, skipping."
+        return 0
+    fi
+
+    if [ -z "${CERT_MANAGER_EMAIL:-}" ]; then
         read -rp "Enter your email for Let's Encrypt certificates: " CERT_MANAGER_EMAIL
     fi
 
@@ -109,14 +87,23 @@ create_keycloak_secrets_random() {
 
     local kc_secret="keycloak-secrets"
     local pg_secret="postgres-custom-secrets"
+    local kc_exists=false
+    local pg_exists=false
 
-    for secret in "$kc_secret" "$pg_secret"; do
-        if kubectl get secret "$secret" -n "$namespace" >/dev/null 2>&1; then
-            echo "Error: Secret '$secret' already exists in namespace '$namespace'."
-            echo "Aborting to prevent overwriting existing credentials."
-            return 1
-        fi
-    done
+    kubectl get secret "$kc_secret" -n "$namespace" >/dev/null 2>&1 && kc_exists=true
+    kubectl get secret "$pg_secret" -n "$namespace" >/dev/null 2>&1 && pg_exists=true
+
+    if $kc_exists && $pg_exists; then
+        echo "Secrets already exist, skipping generation."
+        return 0
+    fi
+
+    if $kc_exists || $pg_exists; then
+        echo "Error: only one of '$kc_secret'/'$pg_secret' exists in namespace" >&2
+        echo "'$namespace' - that shouldn't happen. Check 'kubectl get secrets" >&2
+        echo "-n $namespace' by hand before continuing." >&2
+        exit 1
+    fi
 
     local admin_pass=$(openssl rand -base64 32)
     local repl_pass=$(openssl rand -base64 32)
@@ -183,13 +170,17 @@ install_keycloak() {
 }
 
 # --- Run ---
-configure_traefik
+"$(dirname "${BASH_SOURCE[0]}")/init-traefik.sh"
 install_cert_manager
 create_cluster_issuer
 
 create_namespace
-create_keycloak_secrets_random || exit 1
+create_keycloak_secrets_random
 create_keycloak_middleware
 
 install_postgres
 install_keycloak
+
+echo ""
+echo "--- Keycloak install complete ---"
+echo "URL: https://bwing/keycloak"

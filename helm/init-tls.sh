@@ -14,9 +14,11 @@ set -euo pipefail
 #
 # Safe to re-run; all the resources below are declarative (kubectl apply).
 
+source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+
 ca_namespace="cert-manager"       # cert-manager's default cluster-resource-namespace
 traefik_namespace="kube-system"   # where k3s runs its bundled Traefik
-host="bwing"
+host="$HOST"
 
 require_cert_manager() {
     if ! kubectl get namespace "$ca_namespace" >/dev/null 2>&1; then

@@ -32,9 +32,9 @@ This script:
 3. Logs into Keycloak's admin CLI (`kcadm.sh`, run via `kubectl exec` into
    the Keycloak pod) using the admin password from the `keycloak-secrets`
    Secret.
-4. Creates a realm (default: `home` - override with `HEADLAMP_KEYCLOAK_REALM`)
-   if it doesn't already exist, and a confidential OIDC client named
-   `headlamp` in that realm, with redirect URI
+4. Creates a realm (default: `master`, set in `../env.sh` - override per-run
+   with `HEADLAMP_KEYCLOAK_REALM`) if it doesn't already exist, and a
+   confidential OIDC client named `headlamp` in that realm, with redirect URI
    `https://bwing/headlamp/oidc-callback`.
 5. Generates a client secret and stores it, along with the client ID and
    issuer URL, in a Kubernetes Secret named `headlamp-oidc` in the

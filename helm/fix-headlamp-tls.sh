@@ -7,8 +7,10 @@ set -euo pipefail
 # always serves for "bwing", which also covers every other app in this repo),
 # run ./init-tls.sh instead - this script is kept as a quick one-off fallback.
 
+source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+
 namespace="headlamp"
-host="bwing"
+host="$HOST"
 
 echo "--- Extracting the cert Traefik currently presents for $host ---"
 cert_file="$(mktemp -t traefik-cert-XXXXXX.pem)"
