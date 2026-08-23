@@ -57,13 +57,19 @@ volumeMounts:
   - name: extra-ca
     mountPath: /extra-ca
 
-## Cluster access granted to anyone who logs into this Headlamp instance.
-## cluster-admin matches the other single-admin tools in this repo. Scope
-## this down (e.g. to a custom read-only ClusterRole) if multiple Keycloak
-## users will log in and shouldn't all get full cluster access.
+## Cluster access for Headlamp's OWN ServiceAccount - NOT per-user access.
+## With OIDC login (config.oidc above) and unsafeUseServiceAccountToken left
+## false (the default - not set here), Headlamp uses each logged-in user's
+## own Keycloak token against the Kubernetes API, so real per-user access is
+## controlled by Kubernetes RBAC bound to Keycloak groups instead (see
+## ../init-rbac.sh and ../configure-k3s-oidc.sh, and the "Per-group
+## Kubernetes RBAC" section in headlamp/README.md). This binding is just a
+## minimal fallback for whatever the pod itself needs - kept at "view" rather
+## than cluster-admin so a stray in-cluster code path can't grant everyone
+## admin by accident.
 clusterRoleBinding:
   create: true
-  clusterRoleName: cluster-admin
+  clusterRoleName: view
 
 serviceAccount:
   create: true

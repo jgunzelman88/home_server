@@ -64,13 +64,45 @@ password under the Credentials tab) - that's who can log into Headlamp.
   `env: OIDC_CALLBACK_URL` are both set explicitly to
   `https://bwing/headlamp/oidc-callback` - behind a reverse-proxy subpath
   Headlamp can't always infer this correctly on its own.
-* **Cluster access**: `clusterRoleBinding.clusterRoleName: cluster-admin`
-  grants full access to anyone who logs in via Keycloak, matching how the
-  other admin tools in this repo are set up. Real per-user RBAC (different
-  Keycloak users getting different Kubernetes permissions) additionally
-  requires configuring the k3s API server itself as an OIDC client
-  (`--oidc-issuer-url`, etc.) - out of scope here, but Headlamp's own docs
-  cover it if you want to go further.
+* **Cluster access**: `clusterRoleBinding` grants Headlamp's own
+  ServiceAccount a minimal `view` fallback - it's not what controls what a
+  logged-in *person* can do. See the next section for that.
+
+## Per-group Kubernetes RBAC
+
+Logging into Headlamp via Keycloak only gates the *web UI*. What a logged-in
+person can actually do to the cluster is a separate question, answered by
+whether the Kubernetes API server itself trusts Keycloak tokens and how
+Keycloak's group claims map to Kubernetes RBAC. Two scripts set this up:
+
+1. **`../init-rbac.sh`** (safe to run against the live cluster) - adds a
+   `groups` claim mapper to the `headlamp` Keycloak client, creates two
+   Keycloak groups (`k8s-admins`, `k8s-viewers`), and applies
+   `ClusterRoleBinding`s mapping them to the built-in `cluster-admin` and
+   `view` ClusterRoles.
+2. **`../configure-k3s-oidc.sh`** (run by hand, as root, **on the k3s node
+   itself**) - the piece that actually matters: it adds
+   `--oidc-issuer-url`, `--oidc-client-id`, `--oidc-username-claim`,
+   `--oidc-groups-claim` (plus `oidc-*-prefix` flags, to stop a
+   maliciously- or accidentally-named Keycloak group like `system:masters`
+   from colliding with a real Kubernetes identity) to k3s's API server, and
+   points `--oidc-ca-file` at the homelab CA from `init-tls.sh` so it can
+   validate Keycloak's cert. This is a node-level system file edit with real
+   outage risk if it's wrong - the script backs up `config.yaml` first and
+   automatically tells you how to roll back if the API server doesn't come
+   back healthy.
+
+Order between the two doesn't matter, but neither does anything for real
+access until *both* have run. After that: put someone in the `k8s-admins`
+or `k8s-viewers` Keycloak group (Users → a user → Groups tab → Join) and
+they'll get `cluster-admin` or read-only access respectively when they log
+into Headlamp - because Headlamp forwards their own Keycloak token to the
+Kubernetes API rather than using its own ServiceAccount (that's what
+`unsafeUseServiceAccountToken: false`, the default, means).
+
+Group and role names beyond these two are entirely up to you - create more
+Keycloak groups and `ClusterRoleBinding`s (or `RoleBinding`s, for
+namespace-scoped access) the same way.
 
 ## Making the TLS trust permanent
 
