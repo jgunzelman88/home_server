@@ -57,6 +57,15 @@ Independent apps, run whenever:
   rotating it, which would otherwise make every previously-saved n8n
   credential undecryptable.
 
+* **`./init-mongodb.sh`** - installs MongoDB into the `mongodb` namespace,
+  plus mongo-express (labelled "Compass" in `mongodb/values.yaml` - see that
+  chart's README for why) as a web admin UI at `https://bwing/mongo`, gated
+  by Keycloak SSO via an oauth2-proxy sidecar. Requires `init-keycloak.sh`
+  to have already been run - it creates a `compass` OIDC client there, the
+  same way `init-headlamp.sh` creates one for Headlamp. Safe to re-run: the
+  MongoDB admin password and oauth2-proxy's cookie secret are generated once
+  and reused; only the Keycloak client secret rotates every run.
+
 Fallback/one-off:
 
 * **`./fix-headlamp-tls.sh`** - quick fix if Headlamp's SSO login fails with

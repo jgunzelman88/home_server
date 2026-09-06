@@ -1,0 +1,40 @@
+{{- if and .Values.compass.enabled .Values.compass.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "mongodb.compass.fullname" . }}
+  labels:
+    {{- include "mongodb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: compass
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: {{ .Values.compass.ingress.tls.enabled | quote }}
+    # No stripPrefix here (unlike n8n/octoprint/pgadmin): mongo-express is
+    # made subpath-aware via ME_CONFIG_SITE_BASEURL instead, and
+    # oauth2-proxy's --proxy-prefix is set to the same path, so both
+    # containers already expect the full "{{ .Values.compass.ingress.path }}"
+    # prefix on incoming requests - see compass-deployment.yaml.
+    traefik.ingress.kubernetes.io/router.middlewares: >-
+      {{ .Release.Namespace }}-{{ include "mongodb.compass.fullname" . }}-addslash@kubernetescrd,{{ .Release.Namespace }}-{{ include "mongodb.compass.fullname" . }}-headers@kubernetescrd
+    {{- with .Values.compass.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.compass.ingress.className }}
+  {{- if .Values.compass.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.compass.ingress.host }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.compass.ingress.host }}
+      http:
+        paths:
+          - path: {{ .Values.compass.ingress.path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "mongodb.compass.fullname" . }}
+                port:
+                  name: http
+{{- end }}

@@ -1,0 +1,24 @@
+{{- if .Values.compass.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mongodb.compass.fullname" . }}
+  labels:
+    {{- include "mongodb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: compass
+spec:
+  type: {{ .Values.compass.service.type }}
+  selector:
+    {{- include "mongodb.compass.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.compass.service.port }}
+      {{- if .Values.compass.oidc.enabled }}
+      # oauth2-proxy - it reverse-proxies authenticated traffic to mongo-express itself.
+      targetPort: 4180
+      {{- else }}
+      # No SSO: go straight to mongo-express.
+      targetPort: 8081
+      {{- end }}
+      protocol: TCP
+{{- end }}

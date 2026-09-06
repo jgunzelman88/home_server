@@ -1,0 +1,185 @@
+{{- if .Values.compass.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mongodb.compass.fullname" . }}
+  labels:
+    {{- include "mongodb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: compass
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "mongodb.compass.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mongodb.compass.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Force a pod restart when the OIDC/basic-auth secret changes.
+        checksum/secret: {{ include (print $.Template.BasePath "/compass-secret.yaml") . | sha256sum }}
+    spec:
+      {{- if and .Values.compass.oidc.enabled .Values.compass.oidc.internalIngressIP }}
+      # oauth2-proxy runs inside the cluster and needs to reach Keycloak at
+      # compass.oidc.keycloakBaseUrl's hostname for OIDC discovery + token
+      # exchange. That hostname is normally only resolvable on the LAN (it's
+      # Traefik's ingress host), so point it at the in-cluster Traefik
+      # Service's ClusterIP instead - Traefik still routes purely on
+      # host+path, so this is safe. init-mongodb.sh fills the IP in
+      # automatically; same problem init-headlamp.sh works around by talking
+      # to Keycloak over localhost via `kubectl exec` instead.
+      hostAliases:
+        - ip: {{ .Values.compass.oidc.internalIngressIP | quote }}
+          hostnames:
+            - {{ include "mongodb.compass.oidcHost" . }}
+      {{- end }}
+      containers:
+        # ------------------------------------------------------------
+        # mongo-express - the actual "Compass"-style web admin UI.
+        # Bound to loopback only: oauth2-proxy (below) is the only thing
+        # in the pod that talks to it directly when SSO is on; the Service
+        # targets mongo-express itself only when oidc.enabled is false.
+        # ------------------------------------------------------------
+        - name: mongo-express
+          image: "{{ .Values.compass.image.repository }}:{{ .Values.compass.image.tag }}"
+          imagePullPolicy: {{ .Values.compass.image.pullPolicy }}
+          ports:
+            - name: express
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: ME_CONFIG_MONGODB_SERVER
+              value: {{ include "mongodb.mongo.fullname" . | quote }}
+            - name: ME_CONFIG_MONGODB_PORT
+              value: {{ .Values.mongodb.service.port | quote }}
+            - name: ME_CONFIG_MONGODB_ADMINUSERNAME
+              value: {{ .Values.mongodb.auth.username | quote }}
+            - name: ME_CONFIG_MONGODB_ADMINPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mongodb.auth.existingSecret | default (include "mongodb.mongo.fullname" .) }}
+                  key: {{ .Values.mongodb.auth.existingSecretKey | default "password" }}
+            - name: ME_CONFIG_MONGODB_ENABLE_ADMIN
+              value: "true"
+            - name: ME_CONFIG_SITE_BASEURL
+              value: {{ printf "%s/" .Values.compass.ingress.path | quote }}
+            {{- if .Values.compass.oidc.enabled }}
+            # Only oauth2-proxy (in this same pod, over localhost) should
+            # reach mongo-express directly.
+            - name: ME_CONFIG_SITE_HOST
+              value: "127.0.0.1"
+            {{- end }}
+            - name: ME_CONFIG_SITE_PORT
+              value: "8081"
+            - name: ME_CONFIG_BASICAUTH_ENABLED
+              value: {{ .Values.compass.basicAuth.enabled | quote }}
+            {{- if .Values.compass.basicAuth.enabled }}
+            - name: ME_CONFIG_BASICAUTH_USERNAME
+              value: {{ .Values.compass.basicAuth.username | quote }}
+            - name: ME_CONFIG_BASICAUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.compass.basicAuth.existingSecret | default (include "mongodb.compass.fullname" .) }}
+                  key: {{ .Values.compass.basicAuth.existingSecretKey | default "basicauth-password" }}
+            {{- end }}
+          # httpGet probes won't reach mongo-express once ME_CONFIG_SITE_HOST
+          # is pinned to 127.0.0.1 (kubelet probes the pod IP, not loopback),
+          # so probe it from inside the container instead.
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - {{ printf "wget -q -O /dev/null http://127.0.0.1:8081%s/" .Values.compass.ingress.path | quote }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - {{ printf "wget -q -O /dev/null http://127.0.0.1:8081%s/" .Values.compass.ingress.path | quote }}
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          {{- with .Values.compass.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+        {{- if .Values.compass.oidc.enabled }}
+        # ------------------------------------------------------------
+        # oauth2-proxy - gates mongo-express behind Keycloak login.
+        # Handles {{ .Values.compass.ingress.path }}/oauth2/* itself (login,
+        # callback, logout, auth-check) and reverse-proxies everything else
+        # under the ingress path straight through to mongo-express above.
+        # ------------------------------------------------------------
+        - name: oauth2-proxy
+          image: "{{ .Values.compass.oidc.image.repository }}:{{ .Values.compass.oidc.image.tag }}"
+          imagePullPolicy: {{ .Values.compass.oidc.image.pullPolicy }}
+          args:
+            - --provider=oidc
+            - {{ printf "--oidc-issuer-url=%s" (include "mongodb.compass.oidcIssuerUrl" .) }}
+            - {{ printf "--client-id=%s" .Values.compass.oidc.clientId }}
+            - {{ printf "--redirect-url=https://%s%s/oauth2/callback" .Values.compass.ingress.host .Values.compass.ingress.path }}
+            - {{ printf "--proxy-prefix=%s/oauth2" .Values.compass.ingress.path }}
+            - --upstream=http://127.0.0.1:8081/
+            - --http-address=0.0.0.0:4180
+            - --email-domain=*
+            - --skip-provider-button=true
+            - --cookie-secure=true
+            - --cookie-expire=168h
+            - {{ printf "--scope=%s" .Values.compass.oidc.scope }}
+            - --silence-ping-logging=true
+            {{- if .Values.compass.oidc.insecureSkipVerify }}
+            - --ssl-insecure-skip-verify=true
+            {{- end }}
+          env:
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.compass.oidc.existingSecret | default (include "mongodb.compass.fullname" .) }}
+                  key: {{ .Values.compass.oidc.existingSecretKey | default "oauth2-client-secret" }}
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.compass.oidc.existingSecret | default (include "mongodb.compass.fullname" .) }}
+                  key: {{ .Values.compass.oidc.cookieSecretKey | default "cookie-secret" }}
+          ports:
+            - name: http
+              containerPort: 4180
+              protocol: TCP
+          readinessProbe:
+            # /ping is a fixed, unauthenticated oauth2-proxy route (not
+            # behind --proxy-prefix) - always 200, unlike /oauth2/auth which
+            # is intentionally 401 for a logged-out visitor.
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          {{- with .Values.compass.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- with .Values.compass.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.compass.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.compass.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

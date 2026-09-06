@@ -1,0 +1,176 @@
+# MongoDB + "Compass" web UI Helm Chart Values
+# Target: k3s / Traefik ingress, host "bwing" (matches the rest of ./helm/*)
+#
+# NOTE on "Compass": MongoDB Compass itself is a desktop GUI application - it
+# connects directly to a mongodb:// URI from your own machine and isn't
+# something that can run behind a web ingress or be gated with SSO. What's
+# deployed here as "compass" is mongo-express, the browser-based admin UI
+# for MongoDB (the closest analogue to pgAdmin for Postgres in ../postgres),
+# fronted by an oauth2-proxy container that adds the Keycloak login
+# mongo-express doesn't have natively. See templates/NOTES.txt / the chart
+# README for how to point the real Compass desktop app at this database too.
+
+nameOverride: ""
+fullnameOverride: "mongodb"
+
+# -------------------------------------------------------
+# MongoDB
+# -------------------------------------------------------
+mongodb:
+  image:
+    repository: mongo
+    tag: "7"
+    pullPolicy: IfNotPresent
+
+  auth:
+    # Root user MongoDB creates on first boot (via MONGO_INITDB_ROOT_*).
+    # Only takes effect the first time the data volume is initialized - see
+    # postgres/README.md's equivalent note if you ever need to change it later.
+    username: admin
+    # Used only when existingSecret is empty.
+    password: "changeme-please-set-a-real-password"
+    # Set this to reuse a Secret you created yourself (or the one
+    # init-mongodb.sh generates) instead of the one this chart generates
+    # inline. Must contain the key named by existingSecretKey.
+    existingSecret: "mongodb-admin"
+    existingSecretKey: "password"
+
+  # ClusterIP Service other pods in the cluster use to reach MongoDB, e.g.
+  # mongodb://admin:<pass>@mongodb.<namespace>.svc.cluster.local:27017/?authSource=admin
+  service:
+    type: ClusterIP
+    port: 27017
+
+  persistence:
+    enabled: true
+    size: 8Gi
+    # empty = k3s default (local-path)
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    existingClaim: ""
+
+  # Extra env vars appended to the mongod container
+  extraEnv: []
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# -------------------------------------------------------
+# "Compass" (mongo-express, SSO-gated by oauth2-proxy)
+# -------------------------------------------------------
+compass:
+  enabled: true
+
+  image:
+    repository: mongo-express
+    tag: "1.0"
+    pullPolicy: IfNotPresent
+
+  # mongo-express's own built-in login. Left disabled by default because
+  # oauth2-proxy (below) is the front door when oidc.enabled=true; turn this
+  # on for defense-in-depth, or as the only gate if you set oidc.enabled=false.
+  basicAuth:
+    enabled: false
+    username: "admin"
+    # Used only when existingSecret is empty.
+    password: "changeme"
+    existingSecret: ""
+    existingSecretKey: "basicauth-password"
+
+  service:
+    type: ClusterIP
+    # Port number the Service listens on. The template points its targetPort
+    # at oauth2-proxy when oidc.enabled, otherwise straight at mongo-express -
+    # you don't need to change this either way.
+    port: 4180
+
+  ingress:
+    enabled: true
+    className: traefik
+    host: bwing
+    path: /mongo
+    # k3s >= v1.25 ships Traefik v2/v3 using traefik.io;
+    # very old installs may need traefik.containo.us
+    traefikApiVersion: traefik.io/v1alpha1
+    annotations: {}
+    tls:
+      enabled: true
+
+  # -----------------------------------------------------
+  # Single sign-on: Compass (mongo-express) -> Keycloak via OIDC
+  # -----------------------------------------------------
+  # mongo-express has no OIDC support of its own, so this runs an
+  # oauth2-proxy container in the same pod, in front of it: oauth2-proxy
+  # handles the Keycloak login/callback and reverse-proxies authenticated
+  # traffic through to mongo-express on localhost. Disabled by default
+  # because it requires a client to exist in Keycloak first -
+  # ../init-mongodb.sh creates it for you (mirrors ../init-headlamp.sh); see
+  # the chart README for the manual steps if you'd rather not use the script.
+  oidc:
+    enabled: true
+
+    image:
+      repository: quay.io/oauth2-proxy/oauth2-proxy
+      tag: "v7.6.0"
+      pullPolicy: IfNotPresent
+
+    # Client ID you create in Keycloak for Compass.
+    clientId: "compass"
+    # Used only when existingSecret is empty.
+    clientSecret: "changeme-client-secret"
+    # Used only when existingSecret is empty. Must be valid base64 of 16, 24,
+    # or 32 raw bytes (oauth2-proxy's requirement) - e.g. `openssl rand -base64 32`.
+    # init-mongodb.sh generates a real one; this placeholder is NOT valid and
+    # will make oauth2-proxy fail to start, on purpose, so a manual
+    # `helm install` without a real secret fails loudly instead of quietly
+    # running with a guessable cookie key.
+    cookieSecret: "changeme-please-generate-a-real-32-byte-cookie-secret"
+    # Must contain the keys named by existingSecretKey / cookieSecretKey below.
+    existingSecret: ""
+    existingSecretKey: "oauth2-client-secret"
+    cookieSecretKey: "cookie-secret"
+
+    # Base URL of Keycloak and the realm the client lives in. Used to build
+    # the OIDC issuer URL oauth2-proxy discovers against.
+    keycloakBaseUrl: "https://bwing/keycloak"
+    realm: "master"
+    scope: "openid email profile"
+
+    # oauth2-proxy (running inside the cluster) needs to resolve
+    # keycloakBaseUrl's hostname to reach Keycloak's OIDC discovery
+    # endpoint. On a single-node k3s box that hostname (bwing) usually only
+    # resolves on the LAN, not from inside a pod - set this to the
+    # in-cluster Traefik Service's ClusterIP and a hostAlias is added so
+    # "bwing" resolves internally too (Traefik still routes purely on
+    # host+path, so this is safe). init-mongodb.sh fills this in
+    # automatically; leave blank if your cluster already resolves the
+    # ingress host internally without one.
+    internalIngressIP: ""
+
+    # oauth2-proxy validates Traefik's TLS cert when it calls
+    # https://{keycloakBaseUrl}/... - if you haven't run ../init-tls.sh yet,
+    # Traefik's ad-hoc self-signed cert will fail that check. Set true as a
+    # quick, temporary workaround; running init-tls.sh (see headlamp/README.md)
+    # is the durable fix and benefits every app in this repo, not just this one.
+    insecureSkipVerify: false
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}

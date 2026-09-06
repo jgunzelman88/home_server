@@ -1,0 +1,30 @@
+{{- if and .Values.compass.enabled .Values.compass.ingress.enabled }}
+apiVersion: {{ .Values.compass.ingress.traefikApiVersion }}
+kind: Middleware
+metadata:
+  name: {{ include "mongodb.compass.fullname" . }}-addslash
+  labels:
+    {{- include "mongodb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: compass
+spec:
+  redirectRegex:
+    regex: {{ printf "^(https?://[^/]+%s)$" .Values.compass.ingress.path | quote }}
+    replacement: ${1}/
+    permanent: true
+---
+# oauth2-proxy needs to see X-Forwarded-Proto: https to build correct
+# https:// redirect/callback URLs back to Keycloak - same role as
+# init-keycloak.sh's keycloak-headers Middleware.
+apiVersion: {{ .Values.compass.ingress.traefikApiVersion }}
+kind: Middleware
+metadata:
+  name: {{ include "mongodb.compass.fullname" . }}-headers
+  labels:
+    {{- include "mongodb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: compass
+spec:
+  headers:
+    customRequestHeaders:
+      X-Forwarded-Proto: "https"
+    sslRedirect: true
+{{- end }}
