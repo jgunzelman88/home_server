@@ -127,8 +127,12 @@ compass:
     clientId: "compass"
     # Used only when existingSecret is empty.
     clientSecret: "changeme-client-secret"
-    # Used only when existingSecret is empty. Must be valid base64 of 16, 24,
-    # or 32 raw bytes (oauth2-proxy's requirement) - e.g. `openssl rand -base64 32`.
+    # Used only when existingSecret is empty. Must be URL-safe base64
+    # (RFC 4648 "-_" alphabet, what oauth2-proxy decodes it as) encoding
+    # 16, 24, or 32 raw bytes - e.g. `openssl rand -base64 32 | tr '+/' '-_'`.
+    # Plain `openssl rand -base64 32` alone uses the standard "+/" alphabet
+    # and will intermittently fail to start ("cookie_secret must be 16, 24,
+    # or 32 bytes... but is 44 bytes") whenever the output contains a "+" or "/".
     # init-mongodb.sh generates a real one; this placeholder is NOT valid and
     # will make oauth2-proxy fail to start, on purpose, so a manual
     # `helm install` without a real secret fails loudly instead of quietly

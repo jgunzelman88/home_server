@@ -64,7 +64,7 @@ kubectl create secret generic mongodb-admin -n mongodb \
 
 kubectl create secret generic mongodb-compass -n mongodb \
   --from-literal=oauth2-client-secret="<client secret from Keycloak>" \
-  --from-literal=cookie-secret="$(openssl rand -base64 32)"
+  --from-literal=cookie-secret="$(openssl rand -base64 32 | tr '+/' '-_')"
 
 helm install mongodb ./mongodb -n mongodb \
   --set mongodb.auth.existingSecret=mongodb-admin \

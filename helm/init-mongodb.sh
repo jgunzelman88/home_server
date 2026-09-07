@@ -151,7 +151,14 @@ create_compass_secret() {
         cookie_secret=$(kubectl get secret mongodb-compass -n "$namespace" \
           -o jsonpath='{.data.cookie-secret}' | base64 -d)
     else
-        cookie_secret=$(openssl rand -base64 32)
+        # oauth2-proxy decodes cookie secrets as URL-safe base64
+        # (RFC 4648 "-_" alphabet) - plain `openssl rand -base64 32` uses
+        # the standard "+/" alphabet, which fails that decode whenever it
+        # happens to contain a "+" or "/" and silently falls back to
+        # treating the 44-character string itself as raw key bytes
+        # ("cookie_secret must be 16, 24, or 32 bytes... but is 44 bytes").
+        # `tr` remaps the alphabet so it decodes to real 32 bytes.
+        cookie_secret=$(openssl rand -base64 32 | tr '+/' '-_')
     fi
 
     kubectl create secret generic mongodb-compass \
