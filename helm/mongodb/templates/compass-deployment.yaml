@@ -73,7 +73,16 @@ spec:
             {{- end }}
             - name: ME_CONFIG_SITE_PORT
               value: "8081"
+            # mongo-express renamed this toggle from ME_CONFIG_BASICAUTH_ENABLED
+            # to ME_CONFIG_BASICAUTH partway through the 1.0.x line - set both
+            # so this works whichever version compass.image.tag pins. Without
+            # both, a version that only understands the new name ignores our
+            # "false" and falls back to its own built-in basic auth
+            # (admin/pass), which 401s every unauthenticated request -
+            # including this pod's own readiness probe.
             - name: ME_CONFIG_BASICAUTH_ENABLED
+              value: {{ .Values.compass.basicAuth.enabled | quote }}
+            - name: ME_CONFIG_BASICAUTH
               value: {{ .Values.compass.basicAuth.enabled | quote }}
             {{- if .Values.compass.basicAuth.enabled }}
             - name: ME_CONFIG_BASICAUTH_USERNAME
@@ -86,21 +95,25 @@ spec:
             {{- end }}
           # httpGet probes won't reach mongo-express once ME_CONFIG_SITE_HOST
           # is pinned to 127.0.0.1 (kubelet probes the pod IP, not loopback),
-          # so probe it from inside the container instead.
+          # so probe it from inside the container instead - using `node`
+          # itself rather than wget/curl, since node is the one binary
+          # guaranteed to exist in this image regardless of base OS flavor
+          # (the official mongo-express image's base has changed before,
+          # and busybox wget silently isn't always present).
           readinessProbe:
             exec:
               command:
-                - sh
-                - -c
-                - {{ printf "wget -q -O /dev/null http://127.0.0.1:8081%s/" .Values.compass.ingress.path | quote }}
+                - node
+                - -e
+                - {{ printf "require('http').get({host:'127.0.0.1',port:8081,path:'%s/'},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))" .Values.compass.ingress.path | quote }}
             initialDelaySeconds: 15
             periodSeconds: 10
           livenessProbe:
             exec:
               command:
-                - sh
-                - -c
-                - {{ printf "wget -q -O /dev/null http://127.0.0.1:8081%s/" .Values.compass.ingress.path | quote }}
+                - node
+                - -e
+                - {{ printf "require('http').get({host:'127.0.0.1',port:8081,path:'%s/'},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))" .Values.compass.ingress.path | quote }}
             initialDelaySeconds: 30
             periodSeconds: 15
           {{- with .Values.compass.resources }}
