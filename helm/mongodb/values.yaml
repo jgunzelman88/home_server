@@ -161,11 +161,19 @@ compass:
     internalIngressIP: ""
 
     # oauth2-proxy validates Traefik's TLS cert when it calls
-    # https://{keycloakBaseUrl}/... - if you haven't run ../init-tls.sh yet,
-    # Traefik's ad-hoc self-signed cert will fail that check. Set true as a
-    # quick, temporary workaround; running init-tls.sh (see headlamp/README.md)
-    # is the durable fix and benefits every app in this repo, not just this one.
+    # https://{keycloakBaseUrl}/... - Traefik's ad-hoc default cert is
+    # self-signed, so that call fails with "x509: certificate signed by
+    # unknown authority" until something trusts it. Two options, same as
+    # Headlamp's equivalent problem (see headlamp/README.md):
     insecureSkipVerify: false
+
+    # The durable fix: trust the same cert-manager homelab CA Headlamp uses.
+    # Set this to the name of a ConfigMap (in THIS release's namespace) with
+    # a "ca.crt" key holding that CA cert, and it's mounted into oauth2-proxy
+    # with SSL_CERT_FILE pointed at it. init-tls.sh creates this ConfigMap
+    # (named "mongodb-ca") and sets this value for you automatically -
+    # leave blank if you haven't run it, or don't want to.
+    trustCAConfigMap: ""
 
   resources:
     requests:

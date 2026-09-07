@@ -116,11 +116,27 @@ Keycloak over `localhost` via `kubectl exec` rather than through the public
 URL). `init-mongodb.sh` resolves and sets this for you.
 
 oauth2-proxy also validates Traefik's TLS certificate when it makes that
-call. If you haven't run `../init-tls.sh` yet, Traefik's ad-hoc self-signed
-cert will fail that check and login will error out - `init-tls.sh` (see
-`../headlamp/README.md`) is the durable fix and benefits every app in this
-repo. `compass.oidc.insecureSkipVerify: true` is a quick, temporary
-workaround if you just want to test the flow first.
+call. Traefik's ad-hoc default cert is self-signed, so until something
+trusts it, login fails with:
+
+```
+error performing request: Get "https://bwing/keycloak/.../openid-configuration":
+tls: failed to verify certificate: x509: certificate signed by unknown authority
+```
+
+Two ways to fix it, same as Headlamp's identical problem
+(`../headlamp/README.md`):
+
+1. **Durable (recommended)**: run `../init-tls.sh`. It mints a stable
+   cert-manager CA for `bwing` (shared by every app in this repo) and now
+   also copies that CA into a `mongodb-ca` ConfigMap in this namespace,
+   points `compass.oidc.trustCAConfigMap` at it, and restarts Compass -
+   after which oauth2-proxy trusts it via `SSL_CERT_FILE`, the same
+   mechanism `../headlamp/values.yaml` uses.
+2. **Quick/temporary**: `--set compass.oidc.insecureSkipVerify=true`. Gets
+   you unblocked immediately but skips TLS verification entirely for
+   oauth2-proxy's outbound calls - fine to test the login flow with, not
+   something to leave on.
 
 ## Rotating the Compass client secret
 

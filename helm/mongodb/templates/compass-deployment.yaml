@@ -159,10 +159,22 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.compass.oidc.existingSecret | default (include "mongodb.compass.fullname" .) }}
                   key: {{ .Values.compass.oidc.cookieSecretKey | default "cookie-secret" }}
+            {{- if .Values.compass.oidc.trustCAConfigMap }}
+            # Go's crypto/x509 reads this on Linux to trust the homelab CA
+            # (see ../headlamp/values.yaml's identical use of SSL_CERT_FILE)
+            # for oauth2-proxy's own outbound OIDC discovery/token calls.
+            - name: SSL_CERT_FILE
+              value: /extra-ca/ca.crt
+            {{- end }}
           ports:
             - name: http
               containerPort: 4180
               protocol: TCP
+          {{- if .Values.compass.oidc.trustCAConfigMap }}
+          volumeMounts:
+            - name: extra-ca
+              mountPath: /extra-ca
+          {{- end }}
           readinessProbe:
             # /ping is a fixed, unauthenticated oauth2-proxy route (not
             # behind --proxy-prefix) - always 200, unlike /oauth2/auth which
@@ -183,6 +195,12 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
         {{- end }}
+      {{- if .Values.compass.oidc.trustCAConfigMap }}
+      volumes:
+        - name: extra-ca
+          configMap:
+            name: {{ .Values.compass.oidc.trustCAConfigMap }}
+      {{- end }}
       {{- with .Values.compass.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

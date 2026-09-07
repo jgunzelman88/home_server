@@ -146,6 +146,36 @@ sync_headlamp_ca() {
     fi
 }
 
+sync_mongodb_ca() {
+    echo "--- Trusting the homelab CA inside Compass's oauth2-proxy (for its OIDC calls to Keycloak) ---"
+
+    if ! kubectl get namespace mongodb >/dev/null 2>&1; then
+        echo "Namespace 'mongodb' not found - skipping (run init-mongodb.sh first if you want this)."
+        return 0
+    fi
+
+    local ca_cert
+    ca_cert="$(mktemp -t homelab-ca-XXXXXX.crt)"
+    kubectl get secret homelab-ca-secret -n "$ca_namespace" \
+      -o jsonpath='{.data.tls\.crt}' | base64 -d > "$ca_cert"
+
+    kubectl create configmap mongodb-ca \
+      --from-file=ca.crt="$ca_cert" \
+      --namespace mongodb \
+      --dry-run=client -o yaml | kubectl apply -f -
+
+    rm -f "$ca_cert"
+
+    if helm status mongodb -n mongodb >/dev/null 2>&1; then
+        echo "Pointing the mongodb release at the 'mongodb-ca' ConfigMap and restarting Compass..."
+        helm upgrade mongodb ./mongodb -n mongodb \
+          --reuse-values \
+          --set compass.oidc.trustCAConfigMap=mongodb-ca \
+          --set compass.oidc.insecureSkipVerify=false
+        kubectl rollout restart deployment/mongodb-compass -n mongodb 2>/dev/null || true
+    fi
+}
+
 # --- Run ---
 require_cert_manager
 create_bootstrap_issuer
@@ -154,6 +184,7 @@ create_ca_issuer
 create_bwing_cert
 set_traefik_default_cert
 sync_headlamp_ca
+sync_mongodb_ca
 
 echo ""
 echo "--- Done ---"
