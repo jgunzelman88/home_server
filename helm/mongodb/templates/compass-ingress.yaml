@@ -9,11 +9,11 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: {{ .Values.compass.ingress.tls.enabled | quote }}
-    # No stripPrefix here (unlike n8n/octoprint/pgadmin): mongo-express is
-    # made subpath-aware via ME_CONFIG_SITE_BASEURL instead, and
-    # oauth2-proxy's --proxy-prefix is set to the same path, so both
-    # containers already expect the full "{{ .Values.compass.ingress.path }}"
-    # prefix on incoming requests - see compass-deployment.yaml.
+    # No stripPrefix here (unlike n8n/octoprint/pgadmin): compass-web is
+    # natively subpath-aware via CW_BASE_ROUTE, so it already expects the
+    # full "{{ .Values.compass.ingress.path }}" prefix on incoming requests
+    # (same category as Keycloak's http.relativePath) - see
+    # compass-deployment.yaml.
     traefik.ingress.kubernetes.io/router.middlewares: >-
       {{ .Release.Namespace }}-{{ include "mongodb.compass.fullname" . }}-addslash@kubernetescrd,{{ .Release.Namespace }}-{{ include "mongodb.compass.fullname" . }}-headers@kubernetescrd
     {{- with .Values.compass.ingress.annotations }}

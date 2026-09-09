@@ -1,14 +1,12 @@
-# MongoDB + "Compass" web UI Helm Chart Values
+# MongoDB + Compass Helm Chart Values
 # Target: k3s / Traefik ingress, host "bwing" (matches the rest of ./helm/*)
 #
-# NOTE on "Compass": MongoDB Compass itself is a desktop GUI application - it
-# connects directly to a mongodb:// URI from your own machine and isn't
-# something that can run behind a web ingress or be gated with SSO. What's
-# deployed here as "compass" is mongo-express, the browser-based admin UI
-# for MongoDB (the closest analogue to pgAdmin for Postgres in ../postgres),
-# fronted by an oauth2-proxy container that adds the Keycloak login
-# mongo-express doesn't have natively. See templates/NOTES.txt / the chart
-# README for how to point the real Compass desktop app at this database too.
+# "Compass" here is https://github.com/haohanyang/compass-web - a
+# self-hosted, browser-based build of the REAL MongoDB Compass UI (it's
+# built on MongoDB's own @mongodb-js/compass-web package, the same one
+# Atlas's Data Explorer uses), not a different admin tool standing in for
+# it. It has native OIDC login, so unlike a typical legacy app there's no
+# oauth2-proxy sidecar involved - Keycloak talks to it directly.
 
 nameOverride: ""
 fullnameOverride: "mongodb"
@@ -32,7 +30,7 @@ mongodb:
     # Set this to reuse a Secret you created yourself (or the one
     # init-mongodb.sh generates) instead of the one this chart generates
     # inline. Must contain the key named by existingSecretKey.
-    existingSecret: "mongodb-admin"
+    existingSecret: ""
     existingSecretKey: "password"
 
   # ClusterIP Service other pods in the cluster use to reach MongoDB, e.g.
@@ -65,19 +63,26 @@ mongodb:
   affinity: {}
 
 # -------------------------------------------------------
-# "Compass" (mongo-express, SSO-gated by oauth2-proxy)
+# Compass (compass-web, native Keycloak OIDC login)
 # -------------------------------------------------------
 compass:
   enabled: true
 
   image:
-    repository: mongo-express
-    tag: "1.0"
+    repository: haohanyang/compass-web
+    # The maintainer's Docker publish is a manual/on-demand job, so a
+    # version-numbered tag (e.g. matching a release in the project's
+    # CHANGELOG) isn't guaranteed to exist yet even if npm has it - verify
+    # with `docker pull haohanyang/compass-web:<tag>` before pinning one.
+    # "latest" is what the project's own README uses.
+    tag: "latest"
     pullPolicy: IfNotPresent
 
-  # mongo-express's own built-in login. Left disabled by default because
-  # oauth2-proxy (below) is the front door when oidc.enabled=true; turn this
-  # on for defense-in-depth, or as the only gate if you set oidc.enabled=false.
+  # compass-web's own "legacy" HTTP Basic auth. Used only when oidc.enabled
+  # is false - compass-web treats OIDC and Basic auth as mutually exclusive
+  # (if OIDC is configured, Basic auth is never registered, regardless of
+  # this setting), so there's no "defense-in-depth" combination here like
+  # ../postgres's pgAdmin.
   basicAuth:
     enabled: false
     username: "admin"
@@ -88,10 +93,7 @@ compass:
 
   service:
     type: ClusterIP
-    # Port number the Service listens on. The template points its targetPort
-    # at oauth2-proxy when oidc.enabled, otherwise straight at mongo-express -
-    # you don't need to change this either way.
-    port: 4180
+    port: 8080
 
   ingress:
     enabled: true
@@ -106,50 +108,37 @@ compass:
       enabled: true
 
   # -----------------------------------------------------
-  # Single sign-on: Compass (mongo-express) -> Keycloak via OIDC
+  # Single sign-on: Compass -> Keycloak via OIDC (native support)
   # -----------------------------------------------------
-  # mongo-express has no OIDC support of its own, so this runs an
-  # oauth2-proxy container in the same pod, in front of it: oauth2-proxy
-  # handles the Keycloak login/callback and reverse-proxies authenticated
-  # traffic through to mongo-express on localhost. Disabled by default
-  # because it requires a client to exist in Keycloak first -
-  # ../init-mongodb.sh creates it for you (mirrors ../init-headlamp.sh); see
-  # the chart README for the manual steps if you'd rather not use the script.
+  # Disabled by default because it requires a client to exist in Keycloak
+  # first - ../init-mongodb.sh creates it for you (mirrors
+  # ../init-headlamp.sh); see the chart README for the manual steps if
+  # you'd rather not use the script.
   oidc:
     enabled: true
-
-    image:
-      repository: quay.io/oauth2-proxy/oauth2-proxy
-      tag: "v7.6.0"
-      pullPolicy: IfNotPresent
 
     # Client ID you create in Keycloak for Compass.
     clientId: "compass"
     # Used only when existingSecret is empty.
     clientSecret: "changeme-client-secret"
-    # Used only when existingSecret is empty. Must be URL-safe base64
-    # (RFC 4648 "-_" alphabet, what oauth2-proxy decodes it as) encoding
-    # 16, 24, or 32 raw bytes - e.g. `openssl rand -base64 32 | tr '+/' '-_'`.
-    # Plain `openssl rand -base64 32` alone uses the standard "+/" alphabet
-    # and will intermittently fail to start ("cookie_secret must be 16, 24,
-    # or 32 bytes... but is 44 bytes") whenever the output contains a "+" or "/".
-    # init-mongodb.sh generates a real one; this placeholder is NOT valid and
-    # will make oauth2-proxy fail to start, on purpose, so a manual
-    # `helm install` without a real secret fails loudly instead of quietly
-    # running with a guessable cookie key.
-    cookieSecret: "changeme-please-generate-a-real-32-byte-cookie-secret"
-    # Must contain the keys named by existingSecretKey / cookieSecretKey below.
+    # Session cookie signing/encryption secret compass-web requires whenever
+    # OIDC is on (its docs ask for 32+ chars - any string works, no base64/
+    # alphabet requirement like a typical AES-key-derived secret). Used only
+    # when existingSecret is empty - init-mongodb.sh generates a real one
+    # (`openssl rand -hex 32`).
+    sessionSecret: "changeme-please-generate-a-real-32-plus-char-session-secret"
+    # Must contain the keys named by existingSecretKey / sessionSecretKey below.
     existingSecret: ""
-    existingSecretKey: "oauth2-client-secret"
-    cookieSecretKey: "cookie-secret"
+    existingSecretKey: "oidc-client-secret"
+    sessionSecretKey: "session-secret"
 
     # Base URL of Keycloak and the realm the client lives in. Used to build
-    # the OIDC issuer URL oauth2-proxy discovers against.
+    # the OIDC issuer URL compass-web discovers against.
     keycloakBaseUrl: "https://bwing/keycloak"
     realm: "master"
     scope: "openid email profile"
 
-    # oauth2-proxy (running inside the cluster) needs to resolve
+    # compass-web (running inside the cluster) needs to resolve
     # keycloakBaseUrl's hostname to reach Keycloak's OIDC discovery
     # endpoint. On a single-node k3s box that hostname (bwing) usually only
     # resolves on the LAN, not from inside a pod - set this to the
@@ -160,28 +149,39 @@ compass:
     # ingress host internally without one.
     internalIngressIP: ""
 
-    # oauth2-proxy validates Traefik's TLS cert when it calls
-    # https://{keycloakBaseUrl}/... - Traefik's ad-hoc default cert is
-    # self-signed, so that call fails with "x509: certificate signed by
-    # unknown authority" until something trusts it. Two options, same as
-    # Headlamp's equivalent problem (see headlamp/README.md):
+    # compass-web is a Node app, so its outbound HTTPS call to Keycloak for
+    # OIDC discovery validates certs using Node's normal trust store - if
+    # you haven't run ../init-tls.sh yet, Traefik's ad-hoc self-signed cert
+    # will fail that check. Two options, same as Headlamp's identical
+    # problem (see headlamp/README.md and this chart's own README):
     insecureSkipVerify: false
 
     # The durable fix: trust the same cert-manager homelab CA Headlamp uses.
     # Set this to the name of a ConfigMap (in THIS release's namespace) with
-    # a "ca.crt" key holding that CA cert, and it's mounted into oauth2-proxy
-    # with SSL_CERT_FILE pointed at it. init-tls.sh creates this ConfigMap
-    # (named "mongodb-ca") and sets this value for you automatically -
-    # leave blank if you haven't run it, or don't want to.
+    # a "ca.crt" key holding that CA cert, and it's mounted in with
+    # NODE_EXTRA_CA_CERTS pointed at it (Node honors this natively - no
+    # app-specific flag needed). init-tls.sh creates this ConfigMap (named
+    # "mongodb-ca") and sets this value for you automatically.
     trustCAConfigMap: ""
+
+  # NOTE on persistence: compass-web can optionally encrypt and persist
+  # ad-hoc connections a user adds through its own UI to a file inside the
+  # installed npm package's directory (not a configurable path) when a
+  # master password is set - deliberately NOT wired up here, since doing it
+  # safely needs a subPath volume mount rather than mounting a PVC over
+  # that whole directory (which would hide the app's own files). Not
+  # needed for the primary use case: the MongoDB connection below is
+  # injected via CW_MONGO_URI on every pod start, so it's always there
+  # regardless of restarts - only extra, manually-added connections would
+  # be lost. See the chart README if you want to add this yourself.
 
   resources:
     requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
+      cpu: 200m
       memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
 
   nodeSelector: {}
   tolerations: []

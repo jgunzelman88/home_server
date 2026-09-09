@@ -51,7 +51,7 @@ app.kubernetes.io/component: mongodb
 
 {{/*
 ------------------------------------------------------------------
-Compass (mongo-express + oauth2-proxy) component
+Compass (compass-web) component
 ------------------------------------------------------------------
 */}}
 {{- define "mongodb.compass.fullname" -}}
@@ -65,8 +65,9 @@ app.kubernetes.io/component: compass
 {{- end }}
 
 {{/*
-Keycloak issuer URL: {keycloakBaseUrl}/realms/{realm} - oauth2-proxy appends
-its own /.well-known/openid-configuration when discovering.
+Keycloak issuer URL: {keycloakBaseUrl}/realms/{realm} - compass-web's
+openid-client library appends its own /.well-known/openid-configuration
+when discovering.
 */}}
 {{- define "mongodb.compass.oidcIssuerUrl" -}}
 {{ printf "%s/realms/%s" (.Values.compass.oidc.keycloakBaseUrl | trimSuffix "/") .Values.compass.oidc.realm }}

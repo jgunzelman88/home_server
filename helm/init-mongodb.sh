@@ -1,23 +1,23 @@
 #!/bin/bash
 set -euo pipefail
 
-# Installs MongoDB plus a Keycloak-gated "Compass" web UI (mongo-express
-# behind an oauth2-proxy sidecar - see mongodb/README.md for why it's not
-# literally the Compass desktop app) into the cluster.
+# Installs MongoDB plus a Keycloak-gated Compass web UI (compass-web, a
+# self-hosted build of the real MongoDB Compass UI with native OIDC login -
+# see mongodb/README.md) into the cluster.
 #
 # Prerequisites: Keycloak already installed and reachable
 # (./init-keycloak.sh). Safe to re-run: the MongoDB admin password and the
-# oauth2-proxy cookie secret are generated once and reused; only the
-# Keycloak client secret rotates every run (same reasoning as
-# init-headlamp.sh - see its comments), and the Compass pod is restarted
-# afterwards so it always has the current one.
+# session secret are generated once and reused; only the Keycloak client
+# secret rotates every run (same reasoning as init-headlamp.sh - see its
+# comments), and the Compass pod is restarted afterwards so it always has
+# the current one.
 
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 
 namespace="mongodb"
 keycloak_namespace="keycloak"
 host="$HOST"
-realm="master"
+realm="${MONGODB_KEYCLOAK_REALM:-$HEADLAMP_KEYCLOAK_REALM}"
 client_id="${MONGODB_KEYCLOAK_CLIENT_ID:-compass}"
 
 create_namespace() {
@@ -98,6 +98,11 @@ create_realm_if_missing() {
 create_compass_client() {
     echo "--- Creating Keycloak client '$client_id' in realm '$realm' ---"
 
+    # compass-web mounts everything (including its OIDC callback) under
+    # CW_BASE_ROUTE - with the chart's default ingress path "/mongo", the
+    # real callback route is "/mongo/auth/callback", not a bare
+    # "/auth/callback". This MUST match compass.oidc redirect URI exactly
+    # (see compass-deployment.yaml's CW_OIDC_REDIRECT_URI).
     local existing_id
     existing_id=$(kcadm get clients -r "$realm" -q "clientId=$client_id" --fields id \
       | grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' | head -n1 \
@@ -114,7 +119,7 @@ create_compass_client() {
           -s standardFlowEnabled=true \
           -s directAccessGrantsEnabled=false \
           -s serviceAccountsEnabled=false \
-          -s "redirectUris=[\"https://${host}/mongo/oauth2/callback\"]" \
+          -s "redirectUris=[\"https://${host}/mongo/auth/callback\"]" \
           -s "webOrigins=[\"https://${host}\"]" \
           -i)
         echo "Client '$client_id' created (id=$client_uuid)."
@@ -137,33 +142,29 @@ create_compass_client() {
     fi
 }
 
-# --- Compass (oauth2-proxy) secret ----------------------------------------
+# --- Compass OIDC secret ---------------------------------------------------
 create_compass_secret() {
     echo "--- Storing Compass OIDC secret in Kubernetes ---"
 
     mkdir -p ./secrets
 
-    local cookie_secret
+    local session_secret
     if kubectl get secret mongodb-compass -n "$namespace" >/dev/null 2>&1; then
-        # Reuse the existing cookie secret so nobody's already-logged-in
+        # Reuse the existing session secret so nobody's already-logged-in
         # session gets silently invalidated by a helm upgrade; only the
         # Keycloak client secret rotates above.
-        cookie_secret=$(kubectl get secret mongodb-compass -n "$namespace" \
-          -o jsonpath='{.data.cookie-secret}' | base64 -d)
+        session_secret=$(kubectl get secret mongodb-compass -n "$namespace" \
+          -o jsonpath='{.data.session-secret}' | base64 -d)
     else
-        # oauth2-proxy decodes cookie secrets as URL-safe base64
-        # (RFC 4648 "-_" alphabet) - plain `openssl rand -base64 32` uses
-        # the standard "+/" alphabet, which fails that decode whenever it
-        # happens to contain a "+" or "/" and silently falls back to
-        # treating the 44-character string itself as raw key bytes
-        # ("cookie_secret must be 16, 24, or 32 bytes... but is 44 bytes").
-        # `tr` remaps the alphabet so it decodes to real 32 bytes.
-        cookie_secret=$(openssl rand -base64 32 | tr '+/' '-_')
+        # compass-web just requires 32+ characters for its session secret -
+        # no base64/alphabet requirement (unlike, say, oauth2-proxy's
+        # cookie-secret), so plain hex is simplest.
+        session_secret=$(openssl rand -hex 32)
     fi
 
     kubectl create secret generic mongodb-compass \
-      --from-literal=oauth2-client-secret="$client_secret" \
-      --from-literal=cookie-secret="$cookie_secret" \
+      --from-literal=oidc-client-secret="$client_secret" \
+      --from-literal=session-secret="$session_secret" \
       --namespace "$namespace" \
       --dry-run=client -o yaml > ./secrets/mongodb-compass-secret.yaml
 
@@ -173,15 +174,15 @@ create_compass_secret() {
 
 # --- In-cluster reachability for keycloakBaseUrl's hostname ---------------
 resolve_traefik_ip() {
-    echo "--- Resolving Traefik's in-cluster ClusterIP (for oauth2-proxy's hostAlias) ---"
+    echo "--- Resolving Traefik's in-cluster ClusterIP (for compass-web's hostAlias) ---"
 
     traefik_ip=$(kubectl get svc traefik -n kube-system -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
 
     if [ -z "$traefik_ip" ]; then
         echo "Warning: couldn't find the 'traefik' Service in kube-system -" >&2
-        echo "leaving compass.oidc.internalIngressIP unset. If oauth2-proxy" >&2
-        echo "can't reach https://${host}/keycloak from inside the cluster," >&2
-        echo "set it by hand - see mongodb/README.md." >&2
+        echo "leaving compass.oidc.internalIngressIP unset. If Compass can't" >&2
+        echo "reach https://${host}/keycloak from inside the cluster, set it" >&2
+        echo "by hand - see mongodb/README.md." >&2
         traefik_ip=""
     fi
 }
@@ -203,9 +204,9 @@ install_mongodb() {
 restart_compass() {
     # Same reasoning as init-headlamp.sh's restart_headlamp: the client
     # secret was just rotated above, but a Secret change alone doesn't
-    # restart the already-running oauth2-proxy container, which only reads
-    # it at process start.
-    echo "--- Restarting Compass so oauth2-proxy picks up the current client secret ---"
+    # restart the already-running Compass container, which only reads it
+    # at process start.
+    echo "--- Restarting Compass so it picks up the current client secret ---"
     kubectl rollout restart deployment/mongodb-compass -n "$namespace" 2>/dev/null \
       || echo "(couldn't find deployment/mongodb-compass - check 'kubectl get deploy -n $namespace' for the real name and restart it manually)"
     kubectl rollout status deployment/mongodb-compass -n "$namespace" --timeout=120s 2>/dev/null || true

@@ -12,9 +12,12 @@ spec:
     replacement: ${1}/
     permanent: true
 ---
-# oauth2-proxy needs to see X-Forwarded-Proto: https to build correct
-# https:// redirect/callback URLs back to Keycloak - same role as
-# init-keycloak.sh's keycloak-headers Middleware.
+# compass-web only enables Fastify's trustProxy (which reads this header to
+# build correct absolute/callback URLs) when OIDC is configured - harmless,
+# and worth keeping, either way. Same role as init-keycloak.sh's
+# keycloak-headers Middleware. compass-web's own CW_OIDC_REDIRECT_URI is
+# also set explicitly (see compass-deployment.yaml), so this isn't the only
+# thing standing between a misdetected scheme and a broken login.
 apiVersion: {{ .Values.compass.ingress.traefikApiVersion }}
 kind: Middleware
 metadata:

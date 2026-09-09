@@ -147,7 +147,7 @@ sync_headlamp_ca() {
 }
 
 sync_mongodb_ca() {
-    echo "--- Trusting the homelab CA inside Compass's oauth2-proxy (for its OIDC calls to Keycloak) ---"
+    echo "--- Trusting the homelab CA inside Compass (for its own OIDC calls to Keycloak) ---"
 
     if ! kubectl get namespace mongodb >/dev/null 2>&1; then
         echo "Namespace 'mongodb' not found - skipping (run init-mongodb.sh first if you want this)."

@@ -17,19 +17,6 @@ Credentials live in the Secret:
 {{- else }}
   {{ include "mongodb.mongo.fullname" . }} (key: {{ .Values.mongodb.auth.existingSecretKey | default "password" }})
 {{- end }}
-
---------------------------------------------------------------------
-Connecting the real MongoDB Compass desktop app
---------------------------------------------------------------------
-The web UI below is mongo-express, not the Compass desktop app (see
-values.yaml's top comment for why). To point actual MongoDB Compass at this
-database from your own machine, port-forward it out of the cluster first:
-
-  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "mongodb.mongo.fullname" . }} 27017:{{ .Values.mongodb.service.port }}
-
-then connect Compass to:
-
-  mongodb://{{ .Values.mongodb.auth.username }}:<password>@localhost:27017/?authSource=admin
 {{- if .Values.compass.enabled }}
 
 --------------------------------------------------------------------
@@ -40,18 +27,21 @@ Compass (web UI)
 {{- else }}
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "mongodb.compass.fullname" . }} 8080:{{ .Values.compass.service.port }}
 {{- end }}
+
+  This is the real Compass UI (haohanyang/compass-web), pre-connected to
+  this release's MongoDB - no manual connection string needed at login.
 {{- if .Values.compass.oidc.enabled }}
 
   Keycloak SSO is enabled. Make sure a Keycloak client exists with:
     Client ID:          {{ .Values.compass.oidc.clientId }}
-    Valid redirect URI: https://{{ .Values.compass.ingress.host }}{{ .Values.compass.ingress.path }}/oauth2/callback
+    Valid redirect URI: https://{{ .Values.compass.ingress.host }}{{ .Values.compass.ingress.path }}/auth/callback
     Issuer URL used:    {{ include "mongodb.compass.oidcIssuerUrl" . }}
   ../init-mongodb.sh creates this for you - see README.md for the manual steps.
 {{- else }}
 
   Keycloak SSO is disabled (compass.oidc.enabled=false).
   {{- if .Values.compass.basicAuth.enabled }}
-  mongo-express's own basic auth is on instead - login: {{ .Values.compass.basicAuth.username }}
+  compass-web's own basic auth is on instead - login: {{ .Values.compass.basicAuth.username }}
   {{- else }}
   No login is enforced - anyone who can reach the ingress can browse the
   database. Turn on compass.oidc.enabled or compass.basicAuth.enabled.

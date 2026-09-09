@@ -22,7 +22,7 @@ spec:
         checksum/secret: {{ include (print $.Template.BasePath "/compass-secret.yaml") . | sha256sum }}
     spec:
       {{- if and .Values.compass.oidc.enabled .Values.compass.oidc.internalIngressIP }}
-      # oauth2-proxy runs inside the cluster and needs to reach Keycloak at
+      # compass-web runs inside the cluster and needs to reach Keycloak at
       # compass.oidc.keycloakBaseUrl's hostname for OIDC discovery + token
       # exchange. That hostname is normally only resolvable on the LAN (it's
       # Traefik's ingress host), so point it at the in-cluster Traefik
@@ -36,165 +36,118 @@ spec:
             - {{ include "mongodb.compass.oidcHost" . }}
       {{- end }}
       containers:
-        # ------------------------------------------------------------
-        # mongo-express - the actual "Compass"-style web admin UI.
-        # Bound to loopback only: oauth2-proxy (below) is the only thing
-        # in the pod that talks to it directly when SSO is on; the Service
-        # targets mongo-express itself only when oidc.enabled is false.
-        # ------------------------------------------------------------
-        - name: mongo-express
+        - name: compass-web
           image: "{{ .Values.compass.image.repository }}:{{ .Values.compass.image.tag }}"
           imagePullPolicy: {{ .Values.compass.image.pullPolicy }}
-          ports:
-            - name: express
-              containerPort: 8081
-              protocol: TCP
+          # CW_MONGO_URI has to be a single connection-string value, but the
+          # username/password come from two separate places (a plain value
+          # and a Secret) - so it's assembled at container start instead of
+          # being a static env var. Built with `node` (guaranteed present -
+          # this is the app's own image) rather than shell string
+          # concatenation so the username/password are properly
+          # percent-encoded regardless of what characters end up in them.
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              export CW_MONGO_URI="$(node -e "
+                const u = encodeURIComponent(process.env.MONGO_USER);
+                const p = encodeURIComponent(process.env.MONGO_PASSWORD);
+                console.log('mongodb://' + u + ':' + p + '@' + process.env.MONGO_HOST + ':' + process.env.MONGO_PORT + '/?authSource=admin');
+              ")"
+              exec compass-web --host 0.0.0.0
           env:
-            - name: ME_CONFIG_MONGODB_SERVER
-              value: {{ include "mongodb.mongo.fullname" . | quote }}
-            - name: ME_CONFIG_MONGODB_PORT
-              value: {{ .Values.mongodb.service.port | quote }}
-            - name: ME_CONFIG_MONGODB_ADMINUSERNAME
+            - name: MONGO_USER
               value: {{ .Values.mongodb.auth.username | quote }}
-            - name: ME_CONFIG_MONGODB_ADMINPASSWORD
+            - name: MONGO_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.mongodb.auth.existingSecret | default (include "mongodb.mongo.fullname" .) }}
                   key: {{ .Values.mongodb.auth.existingSecretKey | default "password" }}
-            - name: ME_CONFIG_MONGODB_ENABLE_ADMIN
-              value: "true"
-            - name: ME_CONFIG_SITE_BASEURL
-              value: {{ printf "%s/" .Values.compass.ingress.path | quote }}
+            - name: MONGO_HOST
+              value: {{ include "mongodb.mongo.fullname" . | quote }}
+            - name: MONGO_PORT
+              value: {{ .Values.mongodb.service.port | quote }}
+            # compass-web mounts EVERYTHING (UI, API, websocket, OIDC routes)
+            # under this prefix - note: no leading slash here, the app adds
+            # it itself (a leading slash in CW_BASE_ROUTE double-prefixes
+            # every route). /healthz is the one route that stays unprefixed.
+            - name: CW_BASE_ROUTE
+              value: {{ .Values.compass.ingress.path | trimPrefix "/" | quote }}
             {{- if .Values.compass.oidc.enabled }}
-            # Only oauth2-proxy (in this same pod, over localhost) should
-            # reach mongo-express directly.
-            - name: ME_CONFIG_SITE_HOST
-              value: "127.0.0.1"
+            - name: CW_OIDC_ISSUER
+              value: {{ include "mongodb.compass.oidcIssuerUrl" . | quote }}
+            - name: CW_OIDC_CLIENT_ID
+              value: {{ .Values.compass.oidc.clientId | quote }}
+            - name: CW_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.compass.oidc.existingSecret | default (include "mongodb.compass.fullname" .) }}
+                  key: {{ .Values.compass.oidc.existingSecretKey | default "oidc-client-secret" }}
+            # Set explicitly rather than left to be inferred from
+            # X-Forwarded-* headers - more reliable behind a subpath, and
+            # this is exactly the value registered as the Keycloak client's
+            # Valid Redirect URI (see init-mongodb.sh / this chart's README).
+            - name: CW_OIDC_REDIRECT_URI
+              value: {{ printf "https://%s%s/auth/callback" .Values.compass.ingress.host .Values.compass.ingress.path | quote }}
+            - name: CW_OIDC_POST_LOGOUT_REDIRECT_URI
+              value: {{ printf "https://%s%s/" .Values.compass.ingress.host .Values.compass.ingress.path | quote }}
+            - name: CW_OIDC_SCOPE
+              value: {{ .Values.compass.oidc.scope | quote }}
+            - name: CW_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.compass.oidc.existingSecret | default (include "mongodb.compass.fullname" .) }}
+                  key: {{ .Values.compass.oidc.sessionSecretKey | default "session-secret" }}
+            {{- if .Values.compass.oidc.insecureSkipVerify }}
+            # Node-wide TLS bypass (compass-web has no OIDC-specific
+            # insecure-skip-verify flag of its own) - quick/temporary only,
+            # see values.yaml / README.
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
             {{- end }}
-            - name: ME_CONFIG_SITE_PORT
-              value: "8081"
-            # mongo-express renamed this toggle from ME_CONFIG_BASICAUTH_ENABLED
-            # to ME_CONFIG_BASICAUTH partway through the 1.0.x line - set both
-            # so this works whichever version compass.image.tag pins. Without
-            # both, a version that only understands the new name ignores our
-            # "false" and falls back to its own built-in basic auth
-            # (admin/pass), which 401s every unauthenticated request -
-            # including this pod's own readiness probe.
-            - name: ME_CONFIG_BASICAUTH_ENABLED
-              value: {{ .Values.compass.basicAuth.enabled | quote }}
-            - name: ME_CONFIG_BASICAUTH
-              value: {{ .Values.compass.basicAuth.enabled | quote }}
-            {{- if .Values.compass.basicAuth.enabled }}
-            - name: ME_CONFIG_BASICAUTH_USERNAME
+            {{- if .Values.compass.oidc.trustCAConfigMap }}
+            # Node honors this natively for all outbound HTTPS, including
+            # the OIDC discovery/token calls openid-client makes.
+            - name: NODE_EXTRA_CA_CERTS
+              value: /extra-ca/ca.crt
+            {{- end }}
+            {{- else if .Values.compass.basicAuth.enabled }}
+            - name: CW_BASIC_AUTH_USERNAME
               value: {{ .Values.compass.basicAuth.username | quote }}
-            - name: ME_CONFIG_BASICAUTH_PASSWORD
+            - name: CW_BASIC_AUTH_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.compass.basicAuth.existingSecret | default (include "mongodb.compass.fullname" .) }}
                   key: {{ .Values.compass.basicAuth.existingSecretKey | default "basicauth-password" }}
             {{- end }}
-          # httpGet probes won't reach mongo-express once ME_CONFIG_SITE_HOST
-          # is pinned to 127.0.0.1 (kubelet probes the pod IP, not loopback),
-          # so probe it from inside the container instead - using `node`
-          # itself rather than wget/curl, since node is the one binary
-          # guaranteed to exist in this image regardless of base OS flavor
-          # (the official mongo-express image's base has changed before,
-          # and busybox wget silently isn't always present).
-          readinessProbe:
-            exec:
-              command:
-                - node
-                - -e
-                - {{ printf "require('http').get({host:'127.0.0.1',port:8081,path:'%s/'},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))" .Values.compass.ingress.path | quote }}
-            initialDelaySeconds: 15
-            periodSeconds: 10
-          livenessProbe:
-            exec:
-              command:
-                - node
-                - -e
-                - {{ printf "require('http').get({host:'127.0.0.1',port:8081,path:'%s/'},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))" .Values.compass.ingress.path | quote }}
-            initialDelaySeconds: 30
-            periodSeconds: 15
-          {{- with .Values.compass.resources }}
-          resources:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-
-        {{- if .Values.compass.oidc.enabled }}
-        # ------------------------------------------------------------
-        # oauth2-proxy - gates mongo-express behind Keycloak login.
-        # Handles {{ .Values.compass.ingress.path }}/oauth2/* itself (login,
-        # callback, logout, auth-check) and reverse-proxies everything else
-        # under the ingress path straight through to mongo-express above.
-        # ------------------------------------------------------------
-        - name: oauth2-proxy
-          image: "{{ .Values.compass.oidc.image.repository }}:{{ .Values.compass.oidc.image.tag }}"
-          imagePullPolicy: {{ .Values.compass.oidc.image.pullPolicy }}
-          args:
-            - --provider=oidc
-            - {{ printf "--oidc-issuer-url=%s" (include "mongodb.compass.oidcIssuerUrl" .) }}
-            - {{ printf "--client-id=%s" .Values.compass.oidc.clientId }}
-            - {{ printf "--redirect-url=https://%s%s/oauth2/callback" .Values.compass.ingress.host .Values.compass.ingress.path }}
-            - {{ printf "--proxy-prefix=%s/oauth2" .Values.compass.ingress.path }}
-            - --upstream=http://127.0.0.1:8081/
-            - --http-address=0.0.0.0:4180
-            - --email-domain=*
-            - --skip-provider-button=true
-            - --cookie-secure=true
-            - --cookie-expire=168h
-            - {{ printf "--scope=%s" .Values.compass.oidc.scope }}
-            - --silence-ping-logging=true
-            {{- if .Values.compass.oidc.insecureSkipVerify }}
-            - --ssl-insecure-skip-verify=true
-            {{- end }}
-          env:
-            - name: OAUTH2_PROXY_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.compass.oidc.existingSecret | default (include "mongodb.compass.fullname" .) }}
-                  key: {{ .Values.compass.oidc.existingSecretKey | default "oauth2-client-secret" }}
-            - name: OAUTH2_PROXY_COOKIE_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.compass.oidc.existingSecret | default (include "mongodb.compass.fullname" .) }}
-                  key: {{ .Values.compass.oidc.cookieSecretKey | default "cookie-secret" }}
-            {{- if .Values.compass.oidc.trustCAConfigMap }}
-            # Go's crypto/x509 reads this on Linux to trust the homelab CA
-            # (see ../headlamp/values.yaml's identical use of SSL_CERT_FILE)
-            # for oauth2-proxy's own outbound OIDC discovery/token calls.
-            - name: SSL_CERT_FILE
-              value: /extra-ca/ca.crt
-            {{- end }}
           ports:
             - name: http
-              containerPort: 4180
+              containerPort: 8080
               protocol: TCP
           {{- if .Values.compass.oidc.trustCAConfigMap }}
           volumeMounts:
             - name: extra-ca
               mountPath: /extra-ca
           {{- end }}
+          # /healthz is always unprefixed, regardless of CW_BASE_ROUTE.
           readinessProbe:
-            # /ping is a fixed, unauthenticated oauth2-proxy route (not
-            # behind --proxy-prefix) - always 200, unlike /oauth2/auth which
-            # is intentionally 401 for a logged-out visitor.
             httpGet:
-              path: /ping
+              path: /healthz
               port: http
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /ping
+              path: /healthz
               port: http
-            initialDelaySeconds: 15
+            initialDelaySeconds: 30
             periodSeconds: 15
           {{- with .Values.compass.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-        {{- end }}
       {{- if .Values.compass.oidc.trustCAConfigMap }}
       volumes:
         - name: extra-ca
