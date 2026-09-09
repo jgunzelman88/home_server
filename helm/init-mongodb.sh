@@ -125,6 +125,16 @@ create_compass_client() {
         echo "Client '$client_id' created (id=$client_uuid)."
     fi
 
+    # Keep the redirect URI/web origins in sync on every run, not just at
+    # creation - an already-existing client (e.g. left over from an earlier
+    # version of this chart, or a manually-created one) would otherwise
+    # keep whatever stale value it was created with forever, causing
+    # Keycloak's "Invalid parameter: redirect_uri" error even though
+    # everything else about the setup is correct.
+    kcadm update "clients/$client_uuid" -r "$realm" \
+      -s "redirectUris=[\"https://${host}/mongo/auth/callback\"]" \
+      -s "webOrigins=[\"https://${host}\"]"
+
     # `create` regenerates the secret but doesn't reliably print it (no
     # Location header on this endpoint) - fetch the value back with a
     # separate `get` instead, same as init-headlamp.sh.
