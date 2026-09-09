@@ -95,6 +95,12 @@ spec:
               value: {{ printf "https://%s%s/" .Values.compass.ingress.host .Values.compass.ingress.path | quote }}
             - name: CW_OIDC_SCOPE
               value: {{ .Values.compass.oidc.scope | quote }}
+            {{- if .Values.compass.oidc.allowedGroups }}
+            - name: CW_OIDC_ALLOWED_GROUPS
+              value: {{ join "," .Values.compass.oidc.allowedGroups | quote }}
+            - name: CW_OIDC_GROUPS_CLAIM
+              value: {{ .Values.compass.oidc.groupsClaim | quote }}
+            {{- end }}
             - name: CW_SESSION_SECRET
               valueFrom:
                 secretKeyRef:

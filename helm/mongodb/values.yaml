@@ -138,6 +138,24 @@ compass:
     realm: "master"
     scope: "openid email profile"
 
+    # Restrict who can log in at all, by Keycloak group membership. Beyond
+    # this single gate, EVERY member of an allowed group gets the same
+    # full admin-level MongoDB access - compass-web has no concept of
+    # read-only vs admin roles (see the chart README). Empty = any
+    # authenticated user in the realm is let in, compass-web's own default.
+    # init-mongodb.sh creates a "mongo-admins" Keycloak group and sets
+    # this for you.
+    allowedGroups: []
+    # ID token claim compass-web reads group membership from - must match
+    # the claim.name configured on the Keycloak client's groups mapper.
+    # init-mongodb.sh creates that mapper with claim.name=groups AND
+    # full.path=false, so membership shows up as a flat "mongo-admins"
+    # rather than Keycloak's default "/mongo-admins" - compass-web does a
+    # plain, case-sensitive string match with NO leading-slash handling,
+    # so getting full.path wrong here silently rejects everyone who
+    # should be allowed, rather than erroring.
+    groupsClaim: "groups"
+
     # compass-web (running inside the cluster) needs to resolve
     # keycloakBaseUrl's hostname to reach Keycloak's OIDC discovery
     # endpoint. On a single-node k3s box that hostname (bwing) usually only

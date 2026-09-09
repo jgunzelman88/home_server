@@ -19,6 +19,10 @@ keycloak_namespace="keycloak"
 host="$HOST"
 realm="${MONGODB_KEYCLOAK_REALM:-$HEADLAMP_KEYCLOAK_REALM}"
 client_id="${MONGODB_KEYCLOAK_CLIENT_ID:-compass}"
+# Group that's allowed to log into Compass at all - empty disables the
+# restriction (any authenticated user in the realm gets in), matching
+# compass-web's own default. See mongodb/README.md.
+admin_group="${MONGODB_ADMIN_GROUP-mongo-admins}"
 
 create_namespace() {
     if ! kubectl get namespace "$namespace" >/dev/null 2>&1; then
@@ -152,6 +156,52 @@ create_compass_client() {
     fi
 }
 
+# --- Restrict login to a Keycloak group -----------------------------------
+add_groups_mapper() {
+    echo "--- Adding a 'groups' claim mapper to client '$client_id' ---"
+
+    local existing
+    existing=$(kcadm get "clients/$client_uuid/protocol-mappers/models" -r "$realm" \
+      | grep -oE '"name"[[:space:]]*:[[:space:]]*"groups"' || true)
+
+    if [ -n "$existing" ]; then
+        echo "Mapper 'groups' already exists on client '$client_id'. Skipping."
+        return 0
+    fi
+
+    # full.path=false so the claim carries a flat "mongo-admins" rather
+    # than Keycloak's default "/mongo-admins" - compass-web's
+    # CW_OIDC_ALLOWED_GROUPS check does a plain string match with no
+    # leading-slash handling of its own, so this MUST be false or every
+    # login is rejected as "not a member of an authorized group" even for
+    # people who actually are.
+    kcadm create "clients/$client_uuid/protocol-mappers/models" -r "$realm" \
+      -s name=groups \
+      -s protocol=openid-connect \
+      -s protocolMapper=oidc-group-membership-mapper \
+      -s 'config."full.path"=false' \
+      -s 'config."id.token.claim"=true' \
+      -s 'config."access.token.claim"=true' \
+      -s 'config."userinfo.token.claim"=true' \
+      -s 'config."claim.name"=groups'
+
+    echo "Mapper created - '$client_id' tokens now carry a flat 'groups' claim."
+}
+
+create_group_if_missing() {
+    local group_name="$1"
+    local existing
+    existing=$(kcadm get groups -r "$realm" \
+      | grep -oE '"name"[[:space:]]*:[[:space:]]*"'"${group_name}"'"' || true)
+
+    if [ -n "$existing" ]; then
+        echo "Group '$group_name' already exists. Skipping."
+    else
+        kcadm create groups -r "$realm" -s name="$group_name"
+        echo "Group '$group_name' created."
+    fi
+}
+
 # --- Compass OIDC secret ---------------------------------------------------
 create_compass_secret() {
     echo "--- Storing Compass OIDC secret in Kubernetes ---"
@@ -217,6 +267,16 @@ detect_ca_configmap() {
 install_mongodb() {
     echo "--- Installing MongoDB + Compass ---"
 
+    # A plain `--set list={a,b}` needs its own arg (can't easily be a
+    # blank/no-op flag when admin_group is empty), so it's built as an
+    # array element only when there's actually a group to restrict to -
+    # otherwise compass.oidc.allowedGroups is left at its values.yaml
+    # default ([], meaning "no restriction").
+    local extra_args=()
+    if [ -n "$admin_group" ]; then
+        extra_args+=(--set "compass.oidc.allowedGroups={${admin_group}}")
+    fi
+
     helm upgrade --install mongodb ./mongodb \
       --namespace "$namespace" \
       --create-namespace \
@@ -226,7 +286,9 @@ install_mongodb() {
       --set compass.oidc.existingSecret=mongodb-compass \
       --set compass.oidc.internalIngressIP="$traefik_ip" \
       --set compass.oidc.trustCAConfigMap="$ca_configmap" \
-      --set compass.ingress.host="$host"
+      --set compass.oidc.groupsClaim=groups \
+      --set compass.ingress.host="$host" \
+      "${extra_args[@]}"
 }
 
 restart_compass() {
@@ -247,6 +309,10 @@ find_keycloak_pod
 login_kcadm
 create_realm_if_missing
 create_compass_client
+add_groups_mapper
+if [ -n "$admin_group" ]; then
+    create_group_if_missing "$admin_group"
+fi
 create_compass_secret
 resolve_traefik_ip
 detect_ca_configmap
@@ -258,3 +324,10 @@ echo "--- MongoDB install complete ---"
 echo "MongoDB (in-cluster): mongodb.${namespace}.svc.cluster.local:27017"
 echo "Compass (web UI):     https://${host}/mongo"
 echo "Realm: ${realm} - create a user there (Users -> Add user) to log in via Keycloak."
+if [ -n "$admin_group" ]; then
+    echo ""
+    echo "Login is restricted to the '${admin_group}' Keycloak group - a user needs"
+    echo "to be added to it (realm '${realm}' -> Users -> pick a user -> Groups tab"
+    echo "-> Join) before they can get into Compass at all. Every member gets full"
+    echo "admin-level MongoDB access - there's no separate read-only tier."
+fi

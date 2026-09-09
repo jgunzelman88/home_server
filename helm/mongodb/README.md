@@ -148,6 +148,35 @@ MongoDB connection is injected via `CW_MONGO_URI` on every pod start, so
 it's always there regardless of restarts - only extra, manually-added
 connections would be lost on a pod restart.
 
+## Restricting who can log in
+
+By default `init-mongodb.sh` restricts Compass login to members of a
+`mongo-admins` Keycloak group (override the name with
+`MONGODB_ADMIN_GROUP=other-name ./init-mongodb.sh`, or set
+`MONGODB_ADMIN_GROUP=` (empty) to disable the restriction entirely and let
+any authenticated user in the realm log in - compass-web's own default).
+
+There's only one tier: every member of the allowed group gets the same
+full admin-level MongoDB access, since Compass connects with the shared
+root Mongo credential - Keycloak group membership gates *whether you can
+open Compass at all*, not what you can do inside it once you're in.
+
+To add someone: Keycloak admin console -> your realm (`compass.oidc.realm`
+in `values.yaml`, `master` by default) -> Users -> pick a user -> Groups
+tab -> Join `mongo-admins`. Takes effect on their next full login - an
+already-logged-in session isn't re-checked or revoked if they're later
+removed from the group (compass-web only checks group membership at the
+OIDC callback, not on every request - see its source if you need tighter
+revocation than that).
+
+Under the hood this is a `groups` claim mapper on the `compass` Keycloak
+client (`full.path=false`, so membership shows up as a flat `"mongo-admins"`
+rather than Keycloak's default `"/mongo-admins"` - compass-web's group
+check is an exact, case-sensitive string match with no leading-slash
+handling of its own, so getting this wrong silently locks everyone out
+rather than erroring) plus `compass.oidc.allowedGroups`/`groupsClaim` in
+`values.yaml`, which set `CW_OIDC_ALLOWED_GROUPS`/`CW_OIDC_GROUPS_CLAIM`.
+
 ## Rotating the Compass client secret
 
 Re-run `init-mongodb.sh` - it detects the existing `compass` client,
