@@ -187,6 +187,23 @@ resolve_traefik_ip() {
     fi
 }
 
+# This script always does a plain `helm upgrade --install --set ...` (no
+# -f values file, no --reuse-values), so any setting NOT passed as a --set
+# flag here resets to its values.yaml default on every run - including
+# compass.oidc.trustCAConfigMap. If ../init-tls.sh already ran (it creates
+# a "mongodb-ca" ConfigMap and points the release at it), re-running this
+# script alone would otherwise silently drop that back to untrusted and
+# reintroduce the "unable to verify the first certificate" error. Detect
+# and carry it forward instead.
+detect_ca_configmap() {
+    if kubectl get configmap mongodb-ca -n "$namespace" >/dev/null 2>&1; then
+        echo "Found 'mongodb-ca' ConfigMap (from init-tls.sh) - keeping Compass's CA trust."
+        ca_configmap="mongodb-ca"
+    else
+        ca_configmap=""
+    fi
+}
+
 install_mongodb() {
     echo "--- Installing MongoDB + Compass ---"
 
@@ -198,6 +215,7 @@ install_mongodb() {
       --set compass.oidc.realm="$realm" \
       --set compass.oidc.existingSecret=mongodb-compass \
       --set compass.oidc.internalIngressIP="$traefik_ip" \
+      --set compass.oidc.trustCAConfigMap="$ca_configmap" \
       --set compass.ingress.host="$host"
 }
 
@@ -221,6 +239,7 @@ create_realm_if_missing
 create_compass_client
 create_compass_secret
 resolve_traefik_ip
+detect_ca_configmap
 install_mongodb
 restart_compass
 
