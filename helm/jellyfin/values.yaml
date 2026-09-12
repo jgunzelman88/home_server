@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: jellyfin/jellyfin
   pullPolicy: IfNotPresent
-  tag: ""  # defaults to Chart.appVersion
+  tag: "12.0"  # defaults to Chart.appVersion
 
 nameOverride: ""
 fullnameOverride: ""
