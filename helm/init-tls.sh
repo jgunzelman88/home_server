@@ -176,6 +176,36 @@ sync_mongodb_ca() {
     fi
 }
 
+sync_gitlab_ca() {
+    echo "--- Trusting the homelab CA inside GitLab (for its OIDC calls to Keycloak) ---"
+
+    if ! kubectl get namespace gitlab >/dev/null 2>&1; then
+        echo "Namespace 'gitlab' not found - skipping (run init-gitlab.sh first if you want this)."
+        return 0
+    fi
+
+    local ca_cert
+    ca_cert="$(mktemp -t homelab-ca-XXXXXX.crt)"
+    kubectl get secret homelab-ca-secret -n "$ca_namespace" \
+      -o jsonpath='{.data.tls\.crt}' | base64 -d > "$ca_cert"
+
+    kubectl create configmap gitlab-ca \
+      --from-file=ca.crt="$ca_cert" \
+      --namespace gitlab \
+      --dry-run=client -o yaml | kubectl apply -f -
+
+    rm -f "$ca_cert"
+
+    if helm status gitlab -n gitlab >/dev/null 2>&1; then
+        # The helm upgrade changes the pod spec (CA mount) and so restarts
+        # GitLab by itself - expect a few minutes of downtime.
+        echo "Pointing the gitlab release at the 'gitlab-ca' ConfigMap (GitLab will restart)..."
+        helm upgrade gitlab ./gitlab -n gitlab \
+          --reuse-values \
+          --set gitlab.oidc.trustCAConfigMap=gitlab-ca
+    fi
+}
+
 # --- Run ---
 require_cert_manager
 create_bootstrap_issuer
@@ -185,6 +215,7 @@ create_bwing_cert
 set_traefik_default_cert
 sync_headlamp_ca
 sync_mongodb_ca
+sync_gitlab_ca
 
 echo ""
 echo "--- Done ---"

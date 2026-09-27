@@ -67,6 +67,18 @@ Independent apps, run whenever:
   MongoDB admin password and Compass's session secret are generated once
   and reused; only the Keycloak client secret rotates every run.
 
+* **`./init-gitlab.sh`** - installs GitLab CE into the `gitlab` namespace
+  at `https://bwing/gitlab`, with its own PostgreSQL and Redis in the same
+  namespace (see `gitlab/README.md`), and Keycloak SSO via OpenID Connect.
+  Requires `init-keycloak.sh`; run `init-tls.sh` too, or SSO fails TLS
+  checks. It creates a `gitlab` client in Keycloak. New SSO users need
+  approval by an admin (Admin -> Users -> Pending approval). The local
+  `root` account with its auto-generated initial password stays as a
+  fallback; the script prints it (GitLab deletes it after 24h - change it
+  right away). Git over SSH is on NodePort 30022. Safe to re-run: it only
+  restarts GitLab if the Keycloak client secret actually changed; data PVCs
+  and the internal DB/Redis passwords survive upgrades and `helm uninstall`.
+
 Fallback/one-off:
 
 * **`./fix-headlamp-tls.sh`** - quick fix if Headlamp's SSO login fails with

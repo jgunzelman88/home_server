@@ -1,0 +1,28 @@
+GitLab CE is starting in namespace "{{ .Release.Namespace }}".
+
+The first boot runs database migrations and usually takes 5-15 minutes:
+  kubectl -n {{ .Release.Namespace }} get pods -w
+  kubectl -n {{ .Release.Namespace }} logs -f deploy/{{ include "gitlab.fullname" . }}
+
+URL:      {{ include "gitlab.externalUrl" . }}
+{{- if .Values.gitlab.oidc.enabled }}
+
+SSO: "Sign in with {{ .Values.gitlab.oidc.label }}" (realm "{{ .Values.gitlab.oidc.realm }}", client "{{ .Values.gitlab.oidc.clientId }}")
+{{- if .Values.gitlab.oidc.blockAutoCreatedUsers }}
+  New SSO users wait in Admin -> Users -> Pending approval until an admin approves them.
+{{- end }}
+  Keycloak users need an email address set, or GitLab gives them a placeholder one.
+{{- end }}
+
+Local admin (always available as a fallback):
+Username: root
+Password: GitLab's auto-generated initial password. Read it with:
+  kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "gitlab.fullname" . }} -- grep 'Password:' /etc/gitlab/initial_root_password
+
+  GitLab deletes that file 24 hours after the first reconfigure - log in and
+  change the root password before then. If you miss it:
+  kubectl -n {{ .Release.Namespace }} exec -it deploy/{{ include "gitlab.fullname" . }} -- gitlab-rake "gitlab:password:reset[root]"
+{{- if .Values.gitlab.ssh.enabled }}
+
+Git over SSH: ssh://git@{{ .Values.gitlab.host }}:{{ .Values.gitlab.ssh.nodePort }}/<group>/<project>.git
+{{- end }}

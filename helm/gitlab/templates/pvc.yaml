@@ -1,0 +1,28 @@
+{{- $fn := include "gitlab.fullname" . }}
+{{- $claims := list }}
+{{- $claims = append $claims (dict "name" (printf "%s-config" $fn) "p" .Values.gitlab.persistence "size" .Values.gitlab.persistence.config.size) }}
+{{- $claims = append $claims (dict "name" (printf "%s-logs" $fn) "p" .Values.gitlab.persistence "size" .Values.gitlab.persistence.logs.size) }}
+{{- $claims = append $claims (dict "name" (printf "%s-data" $fn) "p" .Values.gitlab.persistence "size" .Values.gitlab.persistence.data.size) }}
+{{- $claims = append $claims (dict "name" (printf "%s-data" (include "gitlab.postgres.fullname" .)) "p" .Values.postgresql.persistence "size" .Values.postgresql.persistence.size) }}
+{{- $claims = append $claims (dict "name" (printf "%s-data" (include "gitlab.redis.fullname" .)) "p" .Values.redis.persistence "size" .Values.redis.persistence.size) }}
+{{- range $claims }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "gitlab.labels" $ | nindent 4 }}
+  annotations:
+    # Never delete repository / database data on `helm uninstall`.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - {{ .p.accessMode }}
+  {{- if .p.storageClass }}
+  storageClassName: {{ .p.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .size }}
+{{- end }}

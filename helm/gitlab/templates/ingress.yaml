@@ -1,0 +1,35 @@
+{{- if .Values.ingress.enabled }}
+# No stripPrefix middleware here (unlike n8n/octoprint): GitLab is
+# configured with external_url .../gitlab and expects to receive the
+# /gitlab prefix itself.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "gitlab.fullname" . }}
+  labels:
+    {{- include "gitlab.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.gitlab.host }}
+      {{- with .Values.ingress.tls.secretName }}
+      secretName: {{ . }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.gitlab.host }}
+      http:
+        paths:
+          - path: {{ .Values.gitlab.path | trimSuffix "/" }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "gitlab.fullname" . }}
+                port:
+                  number: {{ .Values.gitlab.service.port }}
+{{- end }}

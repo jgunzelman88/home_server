@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gitlab.fullname" . }}
+  labels:
+    {{- include "gitlab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gitlab
+spec:
+  type: {{ .Values.gitlab.service.type }}
+  selector:
+    {{- include "gitlab.selectorLabels" (dict "ctx" . "component" "gitlab") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.gitlab.service.port }}
+      targetPort: http
+{{- if .Values.gitlab.ssh.enabled }}
+---
+# Git over SSH: ssh://git@<host>:<nodePort>/group/project.git
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gitlab.fullname" . }}-ssh
+  labels:
+    {{- include "gitlab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gitlab
+spec:
+  type: NodePort
+  selector:
+    {{- include "gitlab.selectorLabels" (dict "ctx" . "component" "gitlab") | nindent 4 }}
+  ports:
+    - name: ssh
+      port: 22
+      targetPort: ssh
+      nodePort: {{ .Values.gitlab.ssh.nodePort }}
+{{- end }}

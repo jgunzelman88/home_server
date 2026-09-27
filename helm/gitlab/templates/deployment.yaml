@@ -1,0 +1,147 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gitlab.fullname" . }}
+  labels:
+    {{- include "gitlab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gitlab
+spec:
+  replicas: 1
+  # RWO volumes + a single Omnibus instance: stop the old pod before starting the new one.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "gitlab.selectorLabels" (dict "ctx" . "component" "gitlab") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gitlab.selectorLabels" (dict "ctx" . "component" "gitlab") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- if and .Values.gitlab.oidc.enabled .Values.gitlab.oidc.internalIngressIP }}
+      # Make keycloakBaseUrl's host (normally LAN-only "bwing") resolve to
+      # the in-cluster Traefik Service; Traefik still routes on host+path.
+      hostAliases:
+        - ip: {{ .Values.gitlab.oidc.internalIngressIP | quote }}
+          hostnames:
+            - {{ include "gitlab.oidcHost" . }}
+      {{- end }}
+      initContainers:
+        # Don't start the (slow) Omnibus reconfigure until its dependencies are reachable.
+        - name: wait-for-deps
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          command:
+            - bash
+            - -c
+            - |
+              until pg_isready -h {{ include "gitlab.postgres.fullname" . }} -p {{ .Values.postgresql.service.port }}; do
+                echo "waiting for postgres..."; sleep 3
+              done
+              until (exec 3<>/dev/tcp/{{ include "gitlab.redis.fullname" . }}/{{ .Values.redis.service.port }}) 2>/dev/null; do
+                echo "waiting for redis..."; sleep 3
+              done
+          # (bash, not sh: the redis check uses bash's /dev/tcp)
+      containers:
+        - name: gitlab
+          image: "{{ .Values.gitlab.image.repository }}:{{ .Values.gitlab.image.tag }}"
+          imagePullPolicy: {{ .Values.gitlab.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "gitlab.fullname" . }}-config
+          env:
+            - name: GITLAB_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gitlab.secretName" . }}
+                  key: postgres-password
+            - name: GITLAB_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gitlab.secretName" . }}
+                  key: redis-password
+            {{- if .Values.gitlab.oidc.enabled }}
+            - name: GITLAB_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gitlab.oidc.existingSecret }}
+                  key: {{ .Values.gitlab.oidc.existingSecretKey }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 80
+            - name: ssh
+              containerPort: 22
+          # First boot runs DB migrations and can take 5-15 minutes.
+          startupProbe:
+            exec:
+              command: ["curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1{{ .Values.gitlab.path | trimSuffix "/" }}/-/readiness"]
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 80
+          readinessProbe:
+            exec:
+              command: ["curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1{{ .Values.gitlab.path | trimSuffix "/" }}/-/readiness"]
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1{{ .Values.gitlab.path | trimSuffix "/" }}/-/liveness"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 10
+          resources:
+            {{- toYaml .Values.gitlab.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/gitlab
+            - name: logs
+              mountPath: /var/log/gitlab
+            - name: data
+              mountPath: /var/opt/gitlab
+            # GitLab's metrics need more than the default 64M /dev/shm
+            - name: dshm
+              mountPath: /dev/shm
+            {{- if .Values.gitlab.oidc.trustCAConfigMap }}
+            - name: trusted-certs
+              mountPath: /etc/gitlab/trusted-certs
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: {{ include "gitlab.fullname" . }}-config
+        - name: logs
+          persistentVolumeClaim:
+            claimName: {{ include "gitlab.fullname" . }}-logs
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "gitlab.fullname" . }}-data
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 256Mi
+        {{- if .Values.gitlab.oidc.trustCAConfigMap }}
+        - name: trusted-certs
+          configMap:
+            name: {{ .Values.gitlab.oidc.trustCAConfigMap }}
+            items:
+              - key: ca.crt
+                path: homelab-ca.crt
+        {{- end }}
+      {{- with .Values.gitlab.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gitlab.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gitlab.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

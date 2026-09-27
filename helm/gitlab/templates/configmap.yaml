@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gitlab.fullname" . }}-config
+  labels:
+    {{- include "gitlab.labels" . | nindent 4 }}
+data:
+  # Evaluated as Ruby (gitlab.rb syntax) by the Omnibus image on every start,
+  # before `gitlab-ctl reconfigure`. Passwords are read from env vars that
+  # come from the gitlab-secrets Secret, so none are stored here.
+  GITLAB_OMNIBUS_CONFIG: |
+    external_url '{{ include "gitlab.externalUrl" . }}'
+    gitlab_rails['time_zone'] = '{{ .Values.gitlab.timezone }}'
+
+    # --- TLS is terminated by Traefik; GitLab's nginx speaks plain HTTP ---
+    nginx['listen_port'] = 80
+    nginx['listen_https'] = false
+    nginx['proxy_set_headers'] = {
+      "X-Forwarded-Proto" => "https",
+      "X-Forwarded-Ssl" => "on"
+    }
+    nginx['real_ip_trusted_addresses'] = {{ .Values.gitlab.trustedProxies | toJson }}
+    nginx['real_ip_header'] = 'X-Forwarded-For'
+    nginx['real_ip_recursive'] = 'on'
+    letsencrypt['enable'] = false
+
+    # --- External PostgreSQL (gitlab-postgres in this namespace) ---
+    postgresql['enable'] = false
+    gitlab_rails['db_adapter'] = 'postgresql'
+    gitlab_rails['db_encoding'] = 'unicode'
+    gitlab_rails['db_host'] = '{{ include "gitlab.postgres.fullname" . }}'
+    gitlab_rails['db_port'] = {{ .Values.postgresql.service.port }}
+    gitlab_rails['db_database'] = '{{ .Values.postgresql.auth.database }}'
+    gitlab_rails['db_username'] = '{{ .Values.postgresql.auth.username }}'
+    gitlab_rails['db_password'] = ENV['GITLAB_DB_PASSWORD']
+
+    # --- External Redis (gitlab-redis in this namespace) ---
+    redis['enable'] = false
+    gitlab_rails['redis_host'] = '{{ include "gitlab.redis.fullname" . }}'
+    gitlab_rails['redis_port'] = {{ .Values.redis.service.port }}
+    gitlab_rails['redis_password'] = ENV['GITLAB_REDIS_PASSWORD']
+
+    # --- Git over SSH via NodePort ---
+    {{- if .Values.gitlab.ssh.enabled }}
+    gitlab_rails['gitlab_ssh_host'] = '{{ .Values.gitlab.host }}'
+    gitlab_rails['gitlab_shell_ssh_port'] = {{ .Values.gitlab.ssh.nodePort }}
+    {{- end }}
+
+    # --- Features that need their own hostname/port or extra infra: off ---
+    registry['enable'] = false
+    gitlab_rails['registry_enabled'] = false
+    gitlab_pages['enable'] = false
+    gitlab_kas['enable'] = false
+
+    # --- Single-node footprint ---
+    prometheus_monitoring['enable'] = false
+    puma['worker_processes'] = {{ .Values.gitlab.puma.workers }}
+    sidekiq['concurrency'] = {{ .Values.gitlab.sidekiq.concurrency }}
+
+    # --- Login ---
+    # The local "root" user always keeps its password login (initial
+    # password: /etc/gitlab/initial_root_password).
+    {{- with .Values.gitlab.oidc }}
+    {{- if .enabled }}
+
+    # Keycloak SSO (OpenID Connect)
+    gitlab_rails['omniauth_enabled'] = true
+    gitlab_rails['omniauth_allow_single_sign_on'] = ['openid_connect']
+    gitlab_rails['omniauth_block_auto_created_users'] = {{ .blockAutoCreatedUsers }}
+    {{- if .autoSignIn }}
+    gitlab_rails['omniauth_auto_sign_in_with_provider'] = 'openid_connect'
+    {{- end }}
+    gitlab_rails['omniauth_providers'] = [
+      {
+        name: "openid_connect",
+        label: {{ .label | quote }},
+        args: {
+          name: "openid_connect",
+          scope: ["openid", "profile", "email"],
+          response_type: "code",
+          issuer: {{ include "gitlab.oidcIssuer" $ | quote }},
+          discovery: true,
+          client_auth_method: "basic",
+          pkce: true,
+          client_options: {
+            identifier: {{ .clientId | quote }},
+            secret: ENV['GITLAB_OIDC_CLIENT_SECRET'],
+            redirect_uri: "{{ include "gitlab.externalUrl" $ }}/users/auth/openid_connect/callback"
+          }
+        }
+      }
+    ]
+    {{- end }}
+    {{- end }}
+    {{- with .Values.gitlab.extraConfig }}
+
+    # --- extraConfig from values.yaml ---
+    {{- . | nindent 4 }}
+    {{- end }}

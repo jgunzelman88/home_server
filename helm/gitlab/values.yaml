@@ -1,0 +1,203 @@
+# GitLab CE Helm Chart Values
+# Target: https://bwing/gitlab (k3s / Traefik ingress)
+#
+# Everything GitLab needs runs in the release namespace ("gitlab" via
+# ../init-gitlab.sh):
+#   * gitlab          - the official Omnibus gitlab-ce image (Rails, Puma,
+#                       Sidekiq, Workhorse, Gitaly, gitlab-shell/sshd, nginx)
+#   * gitlab-postgres - dedicated PostgreSQL for GitLab
+#   * gitlab-redis    - dedicated Redis for GitLab
+#
+# Login: Keycloak SSO via OpenID Connect (gitlab.oidc, wired up by
+# ../init-gitlab.sh), plus GitLab's built-in "root" account with its
+# auto-generated initial password as a local break-glass admin (see
+# templates/NOTES.txt for how to read it).
+
+nameOverride: ""
+fullnameOverride: "gitlab"
+
+# -------------------------------------------------------
+# GitLab (Omnibus)
+# -------------------------------------------------------
+gitlab:
+  image:
+    repository: gitlab/gitlab-ce
+    # Pin a real tag - GitLab has required upgrade stops, so never use
+    # "latest". To upgrade, follow https://docs.gitlab.com/update/upgrade_paths/
+    tag: "18.2.1-ce.0"
+    pullPolicy: IfNotPresent
+
+  # Public host + sub-path. external_url becomes https://<host><path>.
+  host: bwing
+  path: /gitlab
+
+  timezone: "UTC"
+
+  # Git over SSH. Port 22 on the node is normally the host's own sshd, so
+  # GitLab's sshd is exposed on a NodePort instead. Clone URLs shown in the
+  # UI will use ssh://git@<host>:<nodePort>/...
+  ssh:
+    enabled: true
+    nodePort: 30022
+
+  # Pod CIDR(s) Traefik connects from - trusted for X-Forwarded-For so
+  # GitLab logs/rate-limits the real client IP. k3s default is 10.42.0.0/16.
+  trustedProxies:
+    - 10.42.0.0/16
+
+  # Tuning for a single home-server node (GitLab's "memory-constrained"
+  # recommendations). Raise these if you have RAM to spare.
+  puma:
+    workers: 2
+  sidekiq:
+    concurrency: 10
+
+  # -----------------------------------------------------
+  # Single sign-on: GitLab -> Keycloak via OpenID Connect
+  # -----------------------------------------------------
+  # OIDC login itself is a free CE feature. What's NOT in CE: mapping
+  # Keycloak groups to GitLab admins / required groups (Premium). So any
+  # user in the realm can sign in, and admins are promoted inside GitLab
+  # (Admin -> Users) by root.
+  #
+  # init-gitlab.sh creates the Keycloak client + the Secret below and sets
+  # enabled/internalIngressIP/trustCAConfigMap for you.
+  oidc:
+    enabled: false
+
+    # Text on the "Sign in with ..." button.
+    label: "Keycloak"
+
+    keycloakBaseUrl: "https://bwing/keycloak"
+    realm: "master"
+    clientId: "gitlab"
+
+    # Secret (in this namespace) holding the Keycloak client secret.
+    existingSecret: "gitlab-oidc"
+    existingSecretKey: "client-secret"
+
+    # New SSO users land in Admin -> Users -> "Pending approval" until root
+    # (or another admin) approves them - the CE-level substitute for
+    # Premium's "required groups". Set false to let every realm user in.
+    blockAutoCreatedUsers: true
+
+    # Skip GitLab's own login form and go straight to Keycloak. Left off so
+    # the local root login keeps working as a fallback if Keycloak is down
+    # (you can also always use https://bwing/gitlab/users/sign_in?auto_sign_in=false).
+    autoSignIn: false
+
+    # GitLab (inside the pod) must reach keycloakBaseUrl's host. "bwing"
+    # usually only resolves on the LAN, so a hostAlias points it at the
+    # in-cluster Traefik Service's ClusterIP - same trick as
+    # mongodb/values.yaml. init-gitlab.sh fills this in.
+    internalIngressIP: ""
+
+    # ConfigMap (in this namespace) with a "ca.crt" key: the homelab CA from
+    # ../init-tls.sh, so GitLab trusts Traefik's cert when it talks to
+    # Keycloak. Mounted into /etc/gitlab/trusted-certs, which Omnibus adds
+    # to its own bundled OpenSSL trust store on every start. init-gitlab.sh
+    # (and init-tls.sh) create "gitlab-ca" and set this for you.
+    trustCAConfigMap: ""
+
+  # Anything extra appended verbatim to GITLAB_OMNIBUS_CONFIG (Ruby, gitlab.rb syntax)
+  extraConfig: ""
+
+  persistence:
+    storageClass: "local-path"
+    accessMode: ReadWriteOnce
+    config:
+      size: 1Gi      # /etc/gitlab  (gitlab.rb, gitlab-secrets.json, SSH host keys)
+    logs:
+      size: 5Gi      # /var/log/gitlab
+    data:
+      size: 50Gi     # /var/opt/gitlab (repositories, uploads, artifacts, LFS)
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 3Gi
+    limits:
+      cpu: "4"
+      memory: 6Gi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# -------------------------------------------------------
+# PostgreSQL (dedicated to GitLab)
+# -------------------------------------------------------
+postgresql:
+  image:
+    repository: postgres
+    # GitLab 18.x requires PostgreSQL 16+
+    tag: "16"
+    pullPolicy: IfNotPresent
+
+  auth:
+    username: gitlab
+    database: gitlabhq_production
+    # Leave empty to generate a random password once (stored in the
+    # "gitlab-secrets" Secret and reused on every upgrade).
+    password: ""
+
+  service:
+    port: 5432
+
+  persistence:
+    storageClass: "local-path"
+    accessMode: ReadWriteOnce
+    size: 10Gi
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+# -------------------------------------------------------
+# Redis (dedicated to GitLab)
+# -------------------------------------------------------
+redis:
+  image:
+    repository: redis
+    tag: "7.4-alpine"
+    pullPolicy: IfNotPresent
+
+  auth:
+    # Leave empty to generate a random password once (same Secret as above).
+    password: ""
+
+  service:
+    port: 6379
+
+  persistence:
+    storageClass: "local-path"
+    accessMode: ReadWriteOnce
+    size: 2Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+# -------------------------------------------------------
+# Ingress (Traefik - k3s default)
+# -------------------------------------------------------
+ingress:
+  enabled: true
+  className: "traefik"
+  tls:
+    enabled: true
+    # Leave empty to use Traefik's default cert (the one init-tls.sh sets up),
+    # or set to a cert-manager managed secret name.
+    secretName: ""
