@@ -47,8 +47,9 @@ How the pod reaches Keycloak at `https://bwing/keycloak`:
   (`gitlab.oidc.internalIngressIP`, filled in by the script) - same trick as
   the mongodb chart.
 * The homelab CA from `init-tls.sh` is copied into a `gitlab-ca` ConfigMap
-  and mounted at `/etc/gitlab/trusted-certs`, which Omnibus adds to its own
-  OpenSSL trust store on start. Without it, SSO fails with an SSL error.
+  and an init container copies it into `/etc/gitlab/trusted-certs` on the
+  config volume (Omnibus needs that directory writable, so it can't be a
+  ConfigMap mount), which Omnibus adds to its own OpenSSL trust store on start. Without it, SSO fails with an SSL error.
   If you run `init-tls.sh` after installing GitLab, it updates the release
   for you (GitLab restarts).
 

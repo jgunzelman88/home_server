@@ -94,8 +94,9 @@ gitlab:
 
     # ConfigMap (in this namespace) with a "ca.crt" key: the homelab CA from
     # ../init-tls.sh, so GitLab trusts Traefik's cert when it talks to
-    # Keycloak. Mounted into /etc/gitlab/trusted-certs, which Omnibus adds
-    # to its own bundled OpenSSL trust store on every start. init-gitlab.sh
+    # Keycloak. An init container copies it into /etc/gitlab/trusted-certs
+    # (must stay writable - Omnibus chmods it), which Omnibus adds to its
+    # own bundled OpenSSL trust store on every start. init-gitlab.sh
     # (and init-tls.sh) create "gitlab-ca" and set this for you.
     trustCAConfigMap: ""
 

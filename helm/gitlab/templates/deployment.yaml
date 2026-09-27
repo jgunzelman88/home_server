@@ -44,6 +44,27 @@ spec:
                 echo "waiting for redis..."; sleep 3
               done
           # (bash, not sh: the redis check uses bash's /dev/tcp)
+        {{- if .Values.gitlab.oidc.trustCAConfigMap }}
+        # Omnibus chmods /etc/gitlab/trusted-certs during reconfigure, so it
+        # can't be a (read-only) ConfigMap mount. Copy the homelab CA onto
+        # the writable config volume instead; reconfigure then adds it to
+        # GitLab's bundled OpenSSL trust store.
+        - name: copy-trusted-certs
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - mkdir -p /etc/gitlab/trusted-certs && cp /ca-src/ca.crt /etc/gitlab/trusted-certs/homelab-ca.crt && chmod 0644 /etc/gitlab/trusted-certs/homelab-ca.crt
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: config
+              mountPath: /etc/gitlab
+            - name: trusted-certs
+              mountPath: /ca-src
+              readOnly: true
+        {{- end }}
       containers:
         - name: gitlab
           image: "{{ .Values.gitlab.image.repository }}:{{ .Values.gitlab.image.tag }}"
@@ -106,11 +127,6 @@ spec:
             # GitLab's metrics need more than the default 64M /dev/shm
             - name: dshm
               mountPath: /dev/shm
-            {{- if .Values.gitlab.oidc.trustCAConfigMap }}
-            - name: trusted-certs
-              mountPath: /etc/gitlab/trusted-certs
-              readOnly: true
-            {{- end }}
       volumes:
         - name: config
           persistentVolumeClaim:
@@ -129,9 +145,6 @@ spec:
         - name: trusted-certs
           configMap:
             name: {{ .Values.gitlab.oidc.trustCAConfigMap }}
-            items:
-              - key: ca.crt
-                path: homelab-ca.crt
         {{- end }}
       {{- with .Values.gitlab.nodeSelector }}
       nodeSelector:
