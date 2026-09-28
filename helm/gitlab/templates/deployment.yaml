@@ -127,6 +127,10 @@ spec:
             # GitLab's metrics need more than the default 64M /dev/shm
             - name: dshm
               mountPath: /dev/shm
+            {{- if .Values.backup.enabled }}
+            - name: backups
+              mountPath: {{ .Values.backup.mountPath }}
+            {{- end }}
       volumes:
         - name: config
           persistentVolumeClaim:
@@ -141,6 +145,11 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 256Mi
+        {{- if .Values.backup.enabled }}
+        - name: backups
+          persistentVolumeClaim:
+            claimName: {{ include "gitlab.fullname" . }}-backups
+        {{- end }}
         {{- if .Values.gitlab.oidc.trustCAConfigMap }}
         - name: trusted-certs
           configMap:

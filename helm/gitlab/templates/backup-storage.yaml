@@ -1,0 +1,55 @@
+{{- if .Values.backup.enabled }}
+# Backup target: a PV pinned to a directory on the node, and the PVC GitLab
+# (and nothing else) binds to it. Both are kept on `helm uninstall` and the
+# PV uses Retain - backups must outlive the app they back up.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  # PVs are cluster-scoped, so include the namespace in the name.
+  name: {{ .Release.Namespace }}-{{ include "gitlab.fullname" . }}-backups
+  labels:
+    {{- include "gitlab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  capacity:
+    storage: {{ .Values.backup.size }}
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  # Empty class: never handed to local-path or any other provisioner.
+  storageClassName: ""
+  claimRef:
+    namespace: {{ .Release.Namespace }}
+    name: {{ include "gitlab.fullname" . }}-backups
+  hostPath:
+    path: {{ .Values.backup.hostPath }}
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - {{ .Values.backup.nodeName }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "gitlab.fullname" . }}-backups
+  labels:
+    {{- include "gitlab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  volumeName: {{ .Release.Namespace }}-{{ include "gitlab.fullname" . }}-backups
+  resources:
+    requests:
+      storage: {{ .Values.backup.size }}
+{{- end }}

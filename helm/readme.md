@@ -78,6 +78,8 @@ Independent apps, run whenever:
   right away). Git over SSH is on NodePort 30022. Safe to re-run: it only
   restarts GitLab if the Keycloak client secret actually changed; data PVCs
   and the internal DB/Redis passwords survive upgrades and `helm uninstall`.
+  Backs up nightly at midnight (ET) to `/media/share2/gitlab-backup` on
+  the node, keeping the newest 3 backups (see `gitlab/README.md`).
 
 Fallback/one-off:
 

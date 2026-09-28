@@ -130,7 +130,45 @@ gitlab:
   affinity: {}
 
 # -------------------------------------------------------
-# PostgreSQL (dedicated to GitLab)
+# Nightly backups
+# -------------------------------------------------------
+# A CronJob runs `gitlab-backup create` inside the running GitLab pod (via
+# kubectl exec), writing to a PVC bound to a hostPath on the node. Each run
+# produces two files with the same timestamp prefix:
+#   <ts>_gitlab_backup.tar       repos, DB, uploads, LFS, artifacts, ...
+#   <ts>_gitlab_config.tar.gz    /etc/gitlab (gitlab-secrets.json, SSH host keys)
+# GitLab's own backup deliberately leaves out gitlab-secrets.json, and a
+# restore without it loses CI variables, 2FA, runner tokens, etc. - hence
+# the second file. After a SUCCESSFUL run only the newest `keep` sets are
+# kept; older ones are deleted. A failed run deletes nothing.
+backup:
+  enabled: true
+  # Midnight every day, in `timeZone`.
+  schedule: "0 0 * * *"
+  timeZone: "America/New_York"
+  keep: 3
+
+  # Where the backups land on the k3s node.
+  hostPath: /media/share2/gitlab-backup
+  # Node that has hostPath (the PV is pinned to it).
+  nodeName: bwing
+  # Informational for a hostPath PV (not enforced), but must be >= the PVC request.
+  size: 200Gi
+  # Mounted here inside the GitLab container; also GitLab's backup_path.
+  mountPath: /backups
+
+  # Any image with sh + kubectl.
+  kubectlImage:
+    repository: alpine/k8s
+    tag: "1.31.4"
+    pullPolicy: IfNotPresent
+
+  # Give up (and mark the Job failed) if a backup takes longer than this.
+  activeDeadlineSeconds: 14400
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+
+
 # -------------------------------------------------------
 postgresql:
   image:

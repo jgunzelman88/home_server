@@ -1,0 +1,156 @@
+{{- if .Values.backup.enabled }}
+{{- $fn := include "gitlab.fullname" . }}
+# The script below runs INSIDE the GitLab container (piped in over
+# `kubectl exec`), where gitlab-backup, Gitaly and the DB client live.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fn }}-backup-script
+  labels:
+    {{- include "gitlab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+data:
+  backup.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    dir={{ .Values.backup.mountPath | quote }}
+    keep={{ .Values.backup.keep | int }}
+    cd "$dir"
+
+    # gitlab-backup writes as the git user; the host directory may have been
+    # created by root (hostPath DirectoryOrCreate). Best effort - a share
+    # that doesn't support chown just needs to already be writable.
+    chown git:git "$dir" 2>/dev/null || true
+
+    echo "[$(date -Is)] Starting GitLab backup into $dir"
+    before=$(ls -1 *_gitlab_backup.tar 2>/dev/null | sort | tail -n1 || true)
+    # STRATEGY=copy: snapshot files first so changes during the run don't
+    # abort the tar. CRON=1: less progress noise.
+    gitlab-backup create STRATEGY=copy CRON=1
+
+    latest=$(ls -1 *_gitlab_backup.tar 2>/dev/null | sort | tail -n1 || true)
+    if [ -z "$latest" ] || [ "$latest" = "$before" ]; then
+        echo "ERROR: gitlab-backup reported success but no new archive appeared in $dir" >&2
+        exit 1
+    fi
+    prefix="${latest%_gitlab_backup.tar}"
+    echo "[$(date -Is)] Created $latest"
+
+    # /etc/gitlab isn't in GitLab's backup on purpose (gitlab-secrets.json
+    # decrypts CI variables/2FA/tokens) - store it alongside, same prefix.
+    config_tar="${prefix}_gitlab_config.tar.gz"
+    tar -czf "$config_tar.partial" -C /etc gitlab
+    mv "$config_tar.partial" "$config_tar"
+    chmod 0600 "$config_tar"
+    echo "[$(date -Is)] Created $config_tar"
+
+    # Retention: only after the new set exists, keep the newest $keep.
+    # Names start with a unix timestamp, so a plain sort is chronological.
+    ls -1 *_gitlab_backup.tar | sort | head -n -"$keep" | while read -r old; do
+        p="${old%_gitlab_backup.tar}"
+        echo "[$(date -Is)] Removing old backup $p"
+        rm -f -- "$old" "${p}_gitlab_config.tar.gz"
+    done
+    # Leftovers from interrupted runs
+    find "$dir" -maxdepth 1 -name '*.partial' -mmin +60 -delete 2>/dev/null || true
+
+    echo "[$(date -Is)] Done. Backups now in $dir:"
+    ls -lh "$dir"
+---
+# Just enough RBAC to find the GitLab pod and exec into it.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fn }}-backup
+  labels:
+    {{- include "gitlab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fn }}-backup
+  labels:
+    {{- include "gitlab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fn }}-backup
+  labels:
+    {{- include "gitlab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fn }}-backup
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fn }}-backup
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $fn }}-backup
+  labels:
+    {{- include "gitlab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  {{- with .Values.backup.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
+  # Never run two backups at once; skip a run missed by >1h (e.g. node was off).
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: {{ .Values.backup.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backup.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      # A half-done backup is cleaned up by the next run; don't retry blindly.
+      backoffLimit: 0
+      activeDeadlineSeconds: {{ .Values.backup.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "gitlab.selectorLabels" (dict "ctx" . "component" "backup") | nindent 12 }}
+        spec:
+          serviceAccountName: {{ $fn }}-backup
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: "{{ .Values.backup.kubectlImage.repository }}:{{ .Values.backup.kubectlImage.tag }}"
+              imagePullPolicy: {{ .Values.backup.kubectlImage.pullPolicy }}
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ $fn }} --timeout=10m
+                  kubectl -n {{ .Release.Namespace }} exec -i deployment/{{ $fn }} -c gitlab -- bash -s < /scripts/backup.sh
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+          volumes:
+            - name: script
+              configMap:
+                name: {{ $fn }}-backup-script
+{{- end }}

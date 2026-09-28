@@ -94,11 +94,72 @@ are annotated `helm.sh/resource-policy: keep` - `helm uninstall` leaves
 repositories and the database intact. Delete them by hand to really wipe.
 
 `gitlab-config` holds `/etc/gitlab/gitlab-secrets.json` - it encrypts CI
-variables, 2FA secrets, runner tokens, etc. Back it up together with the
-database; a DB restore without it is only partially usable.
+variables, 2FA secrets, runner tokens, etc. The nightly backup below saves
+it alongside every GitLab backup.
 
-Backups: `kubectl -n gitlab exec deploy/gitlab -- gitlab-backup create`
-(writes to `/var/opt/gitlab/backups` on the `gitlab-data` volume).
+## Backups
+
+The `gitlab-backup` CronJob runs **every night at midnight
+(America/New_York)** and writes to `/media/share2/gitlab-backup` on `bwing`,
+through a hostPath PV (`gitlab-gitlab-backups`, pinned to node `bwing`,
+`Retain`) and the `gitlab-backups` PVC, which is mounted in the GitLab pod
+at `/backups` (GitLab's `backup_path`).
+
+Each run makes a matching pair:
+
+* `<ts>_gitlab_backup.tar` - `gitlab-backup create`: repos, database,
+  uploads, LFS, artifacts, ...
+* `<ts>_gitlab_config.tar.gz` - `/etc/gitlab` (`gitlab-secrets.json`,
+  `gitlab.rb`, SSH host keys). GitLab's backup leaves these out on purpose,
+  but you need them to restore. **Contains secrets** - it's written `0600`;
+  keep the share private.
+
+After a **successful** run, only the newest **3** pairs are kept
+(`backup.keep`) and older ones are deleted. A failed run deletes nothing.
+
+How it works: the Job (`alpine/k8s`, i.e. kubectl) waits for the GitLab
+deployment to be ready, then pipes `backup.sh` (ConfigMap
+`gitlab-backup-script`) into `kubectl exec` in the GitLab container, where
+`gitlab-backup`, Gitaly and the DB client are. Its ServiceAccount can only
+read deployments/pods and exec in this namespace.
+
+```bash
+# Run one now instead of waiting for midnight
+kubectl -n gitlab create job --from=cronjob/gitlab-backup gitlab-backup-manual
+kubectl -n gitlab logs -f job/gitlab-backup-manual
+
+# History / last result
+kubectl -n gitlab get cronjob gitlab-backup
+kubectl -n gitlab get jobs -l app.kubernetes.io/component=backup
+```
+
+Notes:
+
+* The directory is created by root if it doesn't exist; the script then
+  `chown`s it to GitLab's `git` user (uid 998). If `/media/share2` is a
+  filesystem that doesn't support `chown` (e.g. NTFS/exFAT/CIFS), mount it
+  so that directory is writable by everyone, or backups fail with
+  permission errors.
+* Size: each backup is roughly your repos + DB + uploads, and three are
+  kept. Check the space on `share2`.
+* Settings live under `backup:` in `values.yaml` (schedule, time zone,
+  `keep`, `hostPath`, `nodeName`). `backup.enabled: false` turns it all off.
+
+### Restoring
+
+```bash
+# 1. Put /etc/gitlab back (in the pod, from the matching config tarball)
+kubectl -n gitlab exec deploy/gitlab -- tar -xzf /backups/<ts>_gitlab_config.tar.gz -C /etc
+# 2. Stop the processes that write to the DB
+kubectl -n gitlab exec deploy/gitlab -- gitlab-ctl stop puma
+kubectl -n gitlab exec deploy/gitlab -- gitlab-ctl stop sidekiq
+# 3. Restore (BACKUP = file name without _gitlab_backup.tar). The image
+#    version must match the one in the file name.
+kubectl -n gitlab exec -it deploy/gitlab -- gitlab-backup restore BACKUP=<ts>
+# 4. Restart and check
+kubectl -n gitlab rollout restart deploy/gitlab
+kubectl -n gitlab exec deploy/gitlab -- gitlab-rake gitlab:check SANITIZE=true
+```
 
 ## Configuration
 

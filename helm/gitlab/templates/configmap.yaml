@@ -57,6 +57,17 @@ data:
     puma['worker_processes'] = {{ .Values.gitlab.puma.workers }}
     sidekiq['concurrency'] = {{ .Values.gitlab.sidekiq.concurrency }}
 
+    {{- if .Values.backup.enabled }}
+    # --- Backups (see templates/backup-*.yaml) ---
+    # The backup CronJob handles ownership and retention itself, so
+    # reconfigure mustn't chown the host-mounted directory (it may be a
+    # share that doesn't allow it) or expire files on its own.
+    gitlab_rails['backup_path'] = '{{ .Values.backup.mountPath }}'
+    gitlab_rails['manage_backup_path'] = false
+    gitlab_rails['backup_keep_time'] = 0
+    gitlab_rails['backup_archive_permissions'] = 0600
+    {{- end }}
+
     # --- Login ---
     # The local "root" user always keeps its password login (initial
     # password: /etc/gitlab/initial_root_password).
