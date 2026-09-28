@@ -24,8 +24,13 @@ gitlab:
     repository: gitlab/gitlab-ce
     # Pin a real tag - GitLab has required upgrade stops, so never use
     # "latest". To upgrade, follow https://docs.gitlab.com/update/upgrade_paths/
-    tag: "18.2.1-ce.0"
+    # (../upgrade-gitlab.sh walks an existing install through the stops).
+    tag: "19.2.7-ce.0"
     pullPolicy: IfNotPresent
+
+  # Keep at 1 (single Omnibus instance on RWO volumes). ../upgrade-gitlab.sh
+  # sets 0 temporarily while PostgreSQL is migrated between majors.
+  replicas: 1
 
   # Public host + sub-path. external_url becomes https://<host><path>.
   host: bwing
@@ -173,9 +178,15 @@ backup:
 postgresql:
   image:
     repository: postgres
-    # GitLab 18.x requires PostgreSQL 16+
-    tag: "16"
+    # GitLab 19.x requires PostgreSQL 17 (min AND max). GitLab 18.x ran on
+    # 16; the 16 -> 17 move is done by ../upgrade-gitlab.sh (dump/restore).
+    tag: "17"
     pullPolicy: IfNotPresent
+
+  # PGDATA subdirectory on the PVC - one per major, so a major upgrade never
+  # writes over the previous cluster. PostgreSQL 16 used "pgdata".
+  # MUST match image.tag: a new name means an EMPTY database.
+  dataSubdir: "pgdata-17"
 
   auth:
     username: gitlab

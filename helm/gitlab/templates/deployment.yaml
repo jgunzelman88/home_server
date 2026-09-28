@@ -6,7 +6,9 @@ metadata:
     {{- include "gitlab.labels" . | nindent 4 }}
     app.kubernetes.io/component: gitlab
 spec:
-  replicas: 1
+  # 0 is used by ../upgrade-gitlab.sh to keep GitLab down while its database
+  # is migrated to a new PostgreSQL major.
+  replicas: {{ .Values.gitlab.replicas }}
   # RWO volumes + a single Omnibus instance: stop the old pod before starting the new one.
   strategy:
     type: Recreate

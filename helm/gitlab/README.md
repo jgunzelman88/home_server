@@ -7,7 +7,7 @@ lives in that one namespace:
 | Workload          | Image                 | What it is                                                                 |
 |-------------------|-----------------------|----------------------------------------------------------------------------|
 | `gitlab`          | `gitlab/gitlab-ce`    | Omnibus GitLab: Rails/Puma, Sidekiq, Workhorse, Gitaly, gitlab-shell/sshd, nginx |
-| `gitlab-postgres` | `postgres:16`         | GitLab's database (bundled Postgres inside Omnibus is disabled)           |
+| `gitlab-postgres` | `postgres:17`         | GitLab's database (bundled Postgres inside Omnibus is disabled)           |
 | `gitlab-redis`    | `redis:7.4-alpine`    | GitLab's cache/queues (bundled Redis inside Omnibus is disabled)          |
 
 Why the Omnibus image and not GitLab's official cloud-native chart: the
@@ -180,6 +180,19 @@ https://docs.gitlab.com/update/upgrade_paths/, bump the tag one stop at a
 time, re-run `init-gitlab.sh`, and wait for background migrations
 (Admin -> Monitoring -> Background migrations) to finish before the next
 stop. Also check the PostgreSQL version each GitLab major requires.
+
+`../upgrade-gitlab.sh` automates this for an existing install: it takes a
+backup, walks 18.2 -> 18.5.7 -> 18.8.11 -> 18.11.12, waits for background
+migrations after each stop, migrates PostgreSQL 16 -> 17 (GitLab 19 requires
+exactly 17) with a dump/restore, then upgrades to the tag in `values.yaml`
+(19.2.7). It's resumable - just re-run it after fixing whatever stopped it.
+
+PostgreSQL majors each get their own data directory on the PVC
+(`postgresql.dataSubdir`: `pgdata` was 16, `pgdata-17` is 17), so the old
+cluster is never overwritten. **`postgresql.image.tag` and
+`postgresql.dataSubdir` must change together** - a new subdir name is an empty
+database. After a successful upgrade the script prints how to delete the old
+16 cluster and the dump.
 
 ## Known gotcha: large pushes over HTTPS
 

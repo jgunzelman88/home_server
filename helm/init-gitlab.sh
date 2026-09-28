@@ -22,6 +22,13 @@ set -euo pipefail
 # updates the Secret + restarts GitLab if it actually differs. Internal
 # Postgres/Redis passwords are generated once and kept; PVCs survive
 # `helm uninstall`.
+#
+# Any arguments are passed straight to `helm upgrade --install` (after the
+# script's own --set flags, so they win), e.g.
+#   ./init-gitlab.sh --set gitlab.image.tag=18.11.12-ce.0
+# ./upgrade-gitlab.sh uses this to walk GitLab through its upgrade stops.
+
+extra_helm_args=("$@")
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 source ./env.sh
@@ -187,6 +194,22 @@ sync_ca() {
     fi
 }
 
+# Guard: the chart's postgresql.dataSubdir changes with each PostgreSQL major.
+# Installing it over a cluster that still runs an older major would start an
+# EMPTY database - that move has to go through ./upgrade-gitlab.sh.
+check_postgres_major() {
+    [ "${#extra_helm_args[@]}" -eq 0 ] || return 0
+    local running wanted
+    running=$(kubectl get deploy gitlab-postgres -n "$namespace"       -o jsonpath='{.spec.template.spec.containers[?(@.name=="postgres")].env[?(@.name=="PGDATA")].value}' 2>/dev/null || true)
+    [ -n "$running" ] || return 0
+    wanted=$(grep -E '^  dataSubdir:' ./gitlab/values.yaml | sed -E 's/.*"([^"]+)".*/\1/')
+    if [ "$(basename "$running")" != "$wanted" ]; then
+        echo "Error: gitlab-postgres runs PGDATA=$running but the chart wants .../$wanted" >&2
+        echo "(a PostgreSQL major upgrade). Run ./upgrade-gitlab.sh instead." >&2
+        exit 1
+    fi
+}
+
 install_gitlab() {
     echo "--- Installing GitLab CE (https://$host/gitlab) ---"
     helm upgrade --install "$release" ./gitlab \
@@ -200,7 +223,8 @@ install_gitlab() {
       --set gitlab.oidc.existingSecret=gitlab-oidc \
       --set gitlab.oidc.blockAutoCreatedUsers="$block_new_users" \
       --set gitlab.oidc.internalIngressIP="$traefik_ip" \
-      --set gitlab.oidc.trustCAConfigMap="$ca_configmap"
+      --set gitlab.oidc.trustCAConfigMap="$ca_configmap" \
+      ${extra_helm_args[@]+"${extra_helm_args[@]}"}
 }
 
 wait_for_gitlab() {
@@ -247,6 +271,7 @@ print_summary() {
 
 # --- Run ---
 create_namespace
+check_postgres_major
 find_keycloak_pod
 login_kcadm
 create_realm_if_missing

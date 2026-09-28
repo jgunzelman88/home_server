@@ -34,9 +34,12 @@ spec:
                 secretKeyRef:
                   name: {{ include "gitlab.secretName" . }}
                   key: postgres-password
-            # Subdirectory so initdb doesn't trip over lost+found on the volume
+            # Subdirectory so initdb doesn't trip over lost+found on the volume.
+            # One per PostgreSQL major (postgresql.dataSubdir), so a major
+            # upgrade restores into a fresh directory and leaves the old one
+            # untouched for rollback - see ../upgrade-gitlab.sh.
             - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
+              value: /var/lib/postgresql/data/{{ required "postgresql.dataSubdir is required" .Values.postgresql.dataSubdir }}
           ports:
             - name: postgres
               containerPort: 5432
