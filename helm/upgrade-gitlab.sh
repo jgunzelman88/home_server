@@ -5,7 +5,8 @@ set -euo pipefail
 # ./init-gitlab.sh) from 18.x to the version pinned in gitlab/values.yaml,
 # going through every required upgrade stop:
 #
-#   18.2 -> 18.5.7 -> 18.8.11 -> 18.11.12 -> [PostgreSQL 16 -> 17] -> 19.2.7
+#   18.2 -> 18.5.7 -> 18.8.11 -> 18.11.12 -> [PostgreSQL 16 -> 17]
+#        -> 19.2.7 -> 19.4.1
 #
 # (https://docs.gitlab.com/update/upgrade_paths/ - latest patch of each stop
 # as of Sept 2026.) GitLab 19 only runs on PostgreSQL 17. Omnibus' automatic
@@ -33,6 +34,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 namespace="gitlab"
 release="gitlab"
 stops_18=("18.5.7-ce.0" "18.8.11-ce.0" "18.11.12-ce.0")
+# Required 19.x stops before the target (19.2 is mandatory; next is 19.5).
+stops_19=("19.2.7-ce.0")
 last_18="${stops_18[-1]}"
 target_pg_major=17
 target_pg_subdir="pgdata-17"
@@ -185,7 +188,7 @@ migrate_postgres() {
 current=$(gitlab_tag)
 echo "GitLab now:     $current   (PostgreSQL $(pg_tag), PGDATA .../$(pg_subdir))"
 echo "Target:         $target_tag (PostgreSQL $target_pg_major)"
-echo "Path:           ${stops_18[*]} -> PG $target_pg_major -> $target_tag"
+echo "Path:           ${stops_18[*]} -> PG $target_pg_major -> ${stops_19[*]} -> $target_tag"
 
 if ver_lt "$current" "18.2.0"; then
     echo "Error: $current is older than the 18.2 stop - upgrade to 18.2 first." >&2; exit 1
@@ -214,6 +217,10 @@ pgmajor=$(pg_tag); pgmajor="${pgmajor%%.*}"
 if [ "$pgmajor" != "$target_pg_major" ] || [ "$(psql_q "select to_regclass('public.schema_migrations') is not null")" != "t" ]; then
     migrate_postgres
 fi
+
+for stop in "${stops_19[@]}"; do
+    if ver_lt "$(gitlab_tag)" "$stop" && ver_lt "$stop" "$target_tag"; then step_to "$stop"; fi
+done
 
 log "GitLab $(gitlab_tag) -> $target_tag (chart defaults)"
 ./init-gitlab.sh

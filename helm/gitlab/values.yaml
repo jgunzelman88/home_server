@@ -25,7 +25,7 @@ gitlab:
     # Pin a real tag - GitLab has required upgrade stops, so never use
     # "latest". To upgrade, follow https://docs.gitlab.com/update/upgrade_paths/
     # (../upgrade-gitlab.sh walks an existing install through the stops).
-    tag: "19.2.7-ce.0"
+    tag: "19.4.1-ce.0"
     pullPolicy: IfNotPresent
 
   # Keep at 1 (single Omnibus instance on RWO volumes). ../upgrade-gitlab.sh

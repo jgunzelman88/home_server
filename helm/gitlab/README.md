@@ -184,8 +184,8 @@ stop. Also check the PostgreSQL version each GitLab major requires.
 `../upgrade-gitlab.sh` automates this for an existing install: it takes a
 backup, walks 18.2 -> 18.5.7 -> 18.8.11 -> 18.11.12, waits for background
 migrations after each stop, migrates PostgreSQL 16 -> 17 (GitLab 19 requires
-exactly 17) with a dump/restore, then upgrades to the tag in `values.yaml`
-(19.2.7). It's resumable - just re-run it after fixing whatever stopped it.
+exactly 17) with a dump/restore, then goes through the 19.2.7 stop to the tag
+in `values.yaml` (19.4.1). It's resumable - just re-run it after fixing whatever stopped it.
 
 PostgreSQL majors each get their own data directory on the PVC
 (`postgresql.dataSubdir`: `pgdata` was 16, `pgdata-17` is 17), so the old

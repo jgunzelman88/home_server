@@ -3,4 +3,4 @@ name: gitlab
 description: GitLab CE (Omnibus image) with its own PostgreSQL and Redis, all in one namespace, served at https://bwing/gitlab
 type: application
 version: 0.2.0
-appVersion: "19.2.7-ce.0"
+appVersion: "19.4.1-ce.0"
