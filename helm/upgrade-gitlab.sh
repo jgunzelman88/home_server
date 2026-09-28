@@ -106,9 +106,17 @@ puts "RESULT #{legacy} #{bm.queued.count} #{failed}"'
 take_backup() {
     if [ "${GITLAB_SKIP_BACKUP:-0}" = 1 ]; then echo "Skipping backup (GITLAB_SKIP_BACKUP=1)."; return; fi
     if ! k get cronjob "$release-backup" >/dev/null 2>&1; then
-        echo "Error: no '$release-backup' CronJob (backup.enabled=false?). Take a backup by hand," >&2
-        echo "then re-run with GITLAB_SKIP_BACKUP=1." >&2
-        exit 1
+        if ! grep -A2 '^backup:' gitlab/values.yaml | grep -q 'enabled: true'; then
+            echo "Error: backup.enabled is false in gitlab/values.yaml. Take a backup by hand," >&2
+            echo "then re-run with GITLAB_SKIP_BACKUP=1." >&2
+            exit 1
+        fi
+        # Release predates the backup job: apply the chart once at the
+        # versions that are running NOW, which only adds the backup
+        # resources (and restarts GitLab for the new backup_path/mount).
+        log "Backup CronJob not installed yet - adding it at the current versions ($(gitlab_tag), PostgreSQL $(pg_tag))"
+        current_pg_args
+        ./init-gitlab.sh --set-string "gitlab.image.tag=$(gitlab_tag)" "${pg_args[@]}"
     fi
     local job
     job="$release-backup-preupgrade-$(date +%Y%m%d%H%M%S)"
@@ -162,7 +170,12 @@ migrate_postgres() {
     # the restore is one transaction, so a failure leaves it empty again).
     if [ "$(psql_q "select to_regclass('public.schema_migrations') is not null")" != "t" ]; then
         log "Restoring the dump into PostgreSQL $target_pg_major"
-        k scale deploy "$release" --replicas=0
+        # (Re)apply the chart with GitLab at 0, so Postgres runs with the
+        # chart's current server flags (max_locks_per_transaction) - this
+        # also covers resuming after a failed restore.
+        ./init-gitlab.sh --set-string "gitlab.image.tag=$last_18" --set gitlab.replicas=0
+        k rollout status "deploy/$release-postgres" --timeout=5m
+        echo "max_locks_per_transaction = $(psql_q 'show max_locks_per_transaction')"
         k exec "$(pg_pod)" -- sh -c "test -s $dump_file && pg_restore -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" --no-owner --single-transaction --exit-on-error $dump_file"
         k exec "$(pg_pod)" -- sh -c "vacuumdb -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" --analyze-only"
 

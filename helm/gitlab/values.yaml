@@ -188,6 +188,14 @@ postgresql:
   # MUST match image.tag: a new name means an EMPTY database.
   dataSubdir: "pgdata-17"
 
+  # Extra `postgres` server flags. GitLab's schema has thousands of tables,
+  # partitions and indexes: the default max_locks_per_transaction (64) is too
+  # small to restore it in one transaction ("out of shared memory") and can
+  # bite heavy migrations too. 1024 costs ~30 MB of shared memory.
+  args:
+    - "-c"
+    - "max_locks_per_transaction=1024"
+
   auth:
     username: gitlab
     database: gitlabhq_production

@@ -21,6 +21,10 @@ spec:
         - name: postgres
           image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
           imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          {{- with .Values.postgresql.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           env:
             # The official image makes POSTGRES_USER a superuser, which lets
             # GitLab's migrations create the extensions it needs
